@@ -1,0 +1,53 @@
+[project]
+name = "ss"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "av>=19.0.0",
+    "dishka>=1.10.1",
+    "pydantic>=2.13.5",
+    "pydantic-yaml>=1.7.0",
+    "pyside6>=6.11.2",
+    "shiboken6>=6.11.2",
+]
+
+[project.scripts]
+ss = "ss:main"
+
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "deptry>=0.25.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+extend-exclude = [
+    "src/ss/integration/app/resources",
+    "src/ss/integration/app/ui",
+]
+force-exclude = true
+
+[tool.pyright]
+exclude = [
+    "src/ss/integration/app/resources",
+    "src/ss/integration/app/ui",
+]
+ignore = [
+    "src/ss/integration/app/resources",
+    "src/ss/integration/app/ui",
+]
+
+[tool.deptry]
+exclude = [
+    "src/ss/integration/app/resources",
+    "src/ss/integration/app/ui",
+]
