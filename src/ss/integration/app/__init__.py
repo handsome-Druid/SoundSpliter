@@ -1,4 +1,4 @@
-from sys import argv, exit
+from sys import argv, exit, modules
 from types import TracebackType
 from typing import NoReturn, Protocol
 
@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (
 from ss.common import Config
 from ss.flow import Start
 
-from . import resources as resources
+from .resources import resources_rc
+
+modules["resources_rc"] = resources_rc
 from .ui import Ui_MainWindow
 
 

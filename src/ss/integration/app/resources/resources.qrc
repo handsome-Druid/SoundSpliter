@@ -1,5 +1,5 @@
 <RCC>
-  <qresource prefix="/images">
-    <file alias="icon">C:/Users/NagasakiSoyo/Downloads/SS_headphones_solid_cute.svg</file>
+  <qresource prefix="/image">
+    <file alias="icon">SS_headphones_solid_cute.svg</file>
   </qresource>
 </RCC>

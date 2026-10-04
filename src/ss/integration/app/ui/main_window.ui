@@ -15,7 +15,7 @@
   </property>
   <property name="windowIcon">
    <iconset resource="../resources/resources.qrc">
-    <normaloff>:/images/icon</normaloff>:/images/icon</iconset>
+    <normaloff>:/image/icon</normaloff>:/image/icon</iconset>
   </property>
   <property name="styleSheet">
    <string notr="true">font-size: 11px</string>
@@ -37,7 +37,7 @@
      <enum>Qt::TextFormat::AutoText</enum>
     </property>
     <property name="pixmap">
-     <pixmap resource="../resources/resources.qrc">:/images/icon</pixmap>
+     <pixmap resource="../resources/resources.qrc">:/image/icon</pixmap>
     </property>
     <property name="scaledContents">
      <bool>true</bool>
