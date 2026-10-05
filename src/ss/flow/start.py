@@ -1,4 +1,3 @@
-from sys import exc_info, exception
 from types import TracebackType
 from typing import Self, override
 
@@ -40,12 +39,18 @@ class Start(QObject):
                 self._split.finished.disconnect(self.__exit__)
             if has_volume:
                 self._volume.finished.disconnect(self.__exit__)
-            if has_split:
-                self._split.__exit__(exc_type, exc, tb)
-                self._split.deleteLater()
-            if has_volume:
-                self._volume.__exit__(exc_type, exc, tb)
-                self._volume.deleteLater()
+            try:
+                if has_split:
+                    try:
+                        self._split.__exit__(exc_type, exc, tb)
+                    finally:
+                        self._split.deleteLater()
+            finally:
+                if has_volume:
+                    try:
+                        self._volume.__exit__(exc_type, exc, tb)
+                    finally:
+                        self._volume.deleteLater()
         finally:
             self.finished.emit(exc_type, exc, tb)
 
@@ -58,7 +63,10 @@ class Start(QObject):
         /,
     ) -> None:
         try:
-            if exc_type is not None or not self._mutex.try_lock():
+            if exc_type is not None:
+                self.__exit__(exc_type, exc, tb)
+                return
+            if not self._mutex.try_lock():
                 return
             left_device: QAudioDevice | None = self._config.left_device
             right_device: QAudioDevice | None = self._config.right_device
@@ -89,8 +97,6 @@ class Start(QObject):
                 self._volume = Volume(left, right, volume, parent=self)
                 self._volume.finished.connect(self.__exit__)
                 self._volume(None, None, None)
-        finally:
-            if exc_type is not None:
-                self.__exit__(exc_type, exc, tb)
-            elif exception() is not None:
-                self.__exit__(*exc_info())
+        except BaseException as e:
+            self.__exit__(type(e), e, e.__traceback__)
+            raise

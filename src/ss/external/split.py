@@ -1,5 +1,4 @@
 from fractions import Fraction
-from sys import exc_info, exception
 from types import TracebackType
 from typing import NamedTuple, Self, cast, override
 
@@ -157,10 +156,10 @@ class Split(QObject):
         /,
     ) -> None:
         try:
-            if (
-                exc_type is not None
-                or self._source.device.state() != QtAudio.State.StoppedState
-            ):
+            if exc_type is not None:
+                self.__exit__(exc_type, exc, tb)
+                return
+            if self._source.device.state() != QtAudio.State.StoppedState:
                 return
             self._source_io: QIODevice = self._source.device.start()
             self._ios: tuple[QIODevice, QIODevice] = (
@@ -168,11 +167,9 @@ class Split(QObject):
                 self._right.device.start(),
             )
             self._source_io.readyRead.connect(self._on_ready_read)
-        finally:
-            if exc_type is not None:
-                self.__exit__(exc_type, exc, tb)
-            elif exception() is not None:
-                self.__exit__(*exc_info())
+        except BaseException as e:
+            self.__exit__(type(e), e, e.__traceback__)
+            raise
 
     @Slot()
     def _on_ready_read(self) -> None:
@@ -203,6 +200,6 @@ class Split(QObject):
                     #     raise RuntimeError(
                     #         f"音频输出未完整写入：{written}/{len(payload)}"
                     #     )
-        except BaseException:
-            self.__exit__(*exc_info())
+        except BaseException as e:
+            self.__exit__(type(e), e, e.__traceback__)
             raise

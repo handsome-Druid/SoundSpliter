@@ -1,4 +1,3 @@
-from sys import exc_info, exception
 from types import TracebackType
 from typing import Self, override
 
@@ -33,24 +32,23 @@ class Volume(QObject):
         ) -> None:
             try:
                 self._parent._notify.emit(0.0 if new_mute else new_volume)
-            except BaseException:
-                self._parent._notify.emit(exc_info())
+            except BaseException as e:
+                self._parent._notify.emit(e)
                 raise
 
     @Slot(object)
     def _on_notify(
         self,
-        gain: float
-        | tuple[type[BaseException] | None, BaseException | None, TracebackType | None],
+        gain: float | BaseException,
     ) -> None:
-        if isinstance(gain, tuple):
-            self.__exit__(*gain)
+        if isinstance(gain, BaseException):
+            self.__exit__(type(gain), gain, gain.__traceback__)
         else:
             try:
                 self._left.setVolume(gain)
                 self._right.setVolume(gain)
-            except BaseException:
-                self.__exit__(*exc_info())
+            except BaseException as e:
+                self.__exit__(type(e), e, e.__traceback__)
                 raise
 
     @override
@@ -87,7 +85,10 @@ class Volume(QObject):
         /,
     ) -> None:
         try:
-            if exc_type is not None or not self._mutex.try_lock():
+            if exc_type is not None:
+                self.__exit__(exc_type, exc, tb)
+                return
+            if not self._mutex.try_lock():
                 return
             try:
                 self._device.EndpointVolume.RegisterControlChangeNotify(self._callback)
@@ -101,11 +102,9 @@ class Volume(QObject):
             )
             self._left.setVolume(gain)
             self._right.setVolume(gain)
-        finally:
-            if exc_type is not None:
-                self.__exit__(exc_type, exc, tb)
-            elif exception() is not None:
-                self.__exit__(*exc_info())
+        except BaseException as e:
+            self.__exit__(type(e), e, e.__traceback__)
+            raise
 
     def __enter__(self) -> Self:
         return self

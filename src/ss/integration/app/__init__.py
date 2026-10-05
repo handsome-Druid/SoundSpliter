@@ -74,7 +74,7 @@ class APP:
             )
             self._stop_action.triggered.connect(self._ui.stopPushButton.click)
             self._quit_action = QAction("退出", self._window)
-            self._quit_action.triggered.connect(self._app.quit)
+            self._quit_action.triggered.connect(self._on_quit_action_triggered)
             self._show_action = QAction("显示主窗口", self._window)
             self._show_action.triggered.connect(self._on_show_action_triggered)
             self._tray_menu = QMenu(
@@ -262,6 +262,7 @@ class APP:
         self._start_action.setEnabled(True)
         self._stop_action.setEnabled(False)
         if exc_type is not None:
+            print(exc_type, exc, tb)
             QMessageBox.critical(
                 self._window,
                 self._app.applicationName(),
@@ -422,6 +423,11 @@ class APP:
             self._window.show()
         self._window.raise_()
         self._window.activateWindow()
+
+    @Slot()
+    def _on_quit_action_triggered(self) -> None:
+        self._window.hide()
+        self._app.quit()
 
     @Slot()
     def _on_audio_device_changed(self) -> None:
