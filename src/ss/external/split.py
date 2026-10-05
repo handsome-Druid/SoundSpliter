@@ -122,22 +122,29 @@ class Split(QObject):
         /,
     ) -> None:
         try:
-            for target in self._left, self._right, self._source:
-                target.device.stop()
-            if not hasattr(self, "_ios"):
-                return
-            self._input.push(frame=None)
-            for index, target in enumerate(iterable=(self._left, self._right)):
-                while True:
-                    try:
-                        output: AudioFrame = cast(AudioFrame, self._sinks[index].pull())
-                    except EOFError:
-                        break
-                    self._ios[index].write(
-                        bytes(
-                            memoryview(output.planes[0])[: output.samples * target.bpf]
+            self._source.device.stop()
+            try:
+                if not hasattr(self, "_ios"):
+                    return
+                self._input.push(frame=None)
+                for index, target in enumerate(iterable=(self._left, self._right)):
+                    while True:
+                        try:
+                            output: AudioFrame = cast(
+                                AudioFrame, self._sinks[index].pull()
+                            )
+                        except EOFError:
+                            break
+                        self._ios[index].write(
+                            bytes(
+                                memoryview(output.planes[0])[
+                                    : output.samples * target.bpf
+                                ]
+                            )
                         )
-                    )
+            finally:
+                for target in self._left, self._right:
+                    target.device.stop()
         finally:
             self.finished.emit(exc_type, exc, tb)
 
@@ -150,10 +157,11 @@ class Split(QObject):
         /,
     ) -> None:
         try:
-            if exc_type is not None:
+            if (
+                exc_type is not None
+                or self._source.device.state() != QtAudio.State.StoppedState
+            ):
                 return
-            if self._source.device.state() != QtAudio.State.StoppedState:
-                raise RuntimeError("音频分流正在运行中！")
             self._source_io: QIODevice = self._source.device.start()
             self._ios: tuple[QIODevice, QIODevice] = (
                 self._left.device.start(),
@@ -170,6 +178,8 @@ class Split(QObject):
     def _on_ready_read(self) -> None:
         try:
             data: bytes = cast(bytes, self._source_io.readAll())
+            if not data:
+                return
             frame: AudioFrame = AudioFrame(
                 format=self._source.format,
                 layout=self._source.layout,
@@ -187,11 +197,12 @@ class Split(QObject):
                     payload: bytes = bytes(
                         memoryview(output.planes[0])[: output.samples * target.bpf]
                     )
-                    written: int = self._ios[index].write(payload)
-                    if written != len(payload):
-                        raise RuntimeError(
-                            f"音频输出未完整写入：{written}/{len(payload)}"
-                        )
+                    self._ios[index].write(payload)
+                    # written: int = self._ios[index].write(payload)
+                    # if written != len(payload):
+                    #     raise RuntimeError(
+                    #         f"音频输出未完整写入：{written}/{len(payload)}"
+                    #     )
         except BaseException:
             self.__exit__(*exc_info())
             raise

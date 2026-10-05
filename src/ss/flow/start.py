@@ -2,16 +2,18 @@ from sys import exc_info, exception
 from types import TracebackType
 from typing import Self, override
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QMutex, QObject, Signal, Slot
 from PySide6.QtMultimedia import QAudioDevice, QAudioSink, QAudioSource
 from shiboken6 import isValid
 
 from ss.common import Config
 from ss.external import Split
+from ss.external.volume import Volume
 
 
 class Start(QObject):
     finished = Signal(object, object, object)
+    _mutex = QMutex()
 
     @override
     def __init__(self, config: Config) -> None:
@@ -30,10 +32,20 @@ class Start(QObject):
         /,
     ) -> None:
         try:
-            if hasattr(self, "_split") and isValid(self._split):
+            self._mutex.try_lock()
+            self._mutex.unlock()
+            has_split: bool = hasattr(self, "_split") and isValid(self._split)
+            has_volume: bool = hasattr(self, "_volume") and isValid(self._volume)
+            if has_split:
                 self._split.finished.disconnect(self.__exit__)
+            if has_volume:
+                self._volume.finished.disconnect(self.__exit__)
+            if has_split:
                 self._split.__exit__(exc_type, exc, tb)
                 self._split.deleteLater()
+            if has_volume:
+                self._volume.__exit__(exc_type, exc, tb)
+                self._volume.deleteLater()
         finally:
             self.finished.emit(exc_type, exc, tb)
 
@@ -46,27 +58,37 @@ class Start(QObject):
         /,
     ) -> None:
         try:
-            if exc_type is not None:
+            if exc_type is not None or not self._mutex.try_lock():
                 return
-            left: QAudioDevice | None = self._config.left_device
-            right: QAudioDevice | None = self._config.right_device
-            source: QAudioDevice | None = self._config.source_device
-            if left is None:
+            left_device: QAudioDevice | None = self._config.left_device
+            right_device: QAudioDevice | None = self._config.right_device
+            source_device: QAudioDevice | None = self._config.source_device
+            volume: QAudioDevice | None = self._config.volume_device
+            if left_device is None:
                 raise RuntimeError("未选择左声道输出")
-            if right is None:
+            if right_device is None:
                 raise RuntimeError("未选择右声道输出")
-            if source is None:
+            if source_device is None:
                 raise RuntimeError("未选择音频输入源")
+            if left_device == right_device:
+                raise RuntimeError("左右声道输出不能为同一个设备")
+            left = QAudioSink(left_device)
+            right = QAudioSink(right_device)
+            source = QAudioSource(source_device)
             self._split = Split(
-                left=QAudioSink(left),
-                right=QAudioSink(right),
-                source=QAudioSource(source),
+                left,
+                right,
+                source,
                 left_latency=self._config.left_latency,
                 right_latency=self._config.right_latency,
                 parent=self,
             )
             self._split.finished.connect(self.__exit__)
             self._split(None, None, None)
+            if volume is not None:
+                self._volume = Volume(left, right, volume, parent=self)
+                self._volume.finished.connect(self.__exit__)
+                self._volume(None, None, None)
         finally:
             if exc_type is not None:
                 self.__exit__(exc_type, exc, tb)

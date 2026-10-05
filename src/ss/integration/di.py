@@ -1,3 +1,5 @@
+from collections.abc import Generator
+
 from dishka import (
     BaseScope,
     Container,
@@ -16,9 +18,14 @@ class DI:
     class _Provider(Provider):
         scope: BaseScope | None = Scope.APP
         _config: CompositeDependencySource = provide(
-            source=Config.from_disk, provides=Config
+            source=lambda self: Config.from_disk(), provides=Config
         )
-        _start: CompositeDependencySource = provide(source=Start)
+
+        @provide
+        @staticmethod
+        def _start(config: Config) -> Generator[Start]:
+            with Start(config) as start:
+                yield start
 
     def __new__(cls) -> Container:
         return make_container(cls._Provider())

@@ -1,18 +1,20 @@
-from typing import ClassVar, Self, override
+from typing import ClassVar, override
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_yaml import (
     parse_yaml_file_as,
     to_yaml_file,  # pyright: ignore[reportUnknownVariableType]
 )
-from PySide6.QtCore import QDir, QFile, QFileInfo
+from PySide6.QtCore import QDir, QFile, QStandardPaths
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 
 
 class Config(BaseModel):
+    # model_config = ConfigDict(validate_assignment=True)
     left: str | None = None
     right: str | None = None
     source: str | None = None
+    volume: str | None = None
     left_latency: int = Field(default=0, ge=0)
     right_latency: int = Field(default=0, ge=0)
 
@@ -61,19 +63,40 @@ class Config(BaseModel):
     def source_device(self, value: QAudioDevice | None) -> None:
         self.source = value and value.description()
 
-    if "__compiled__" in globals():
-        _file: ClassVar[QFile] = QFile(
-            QDir(globals()["__compiled__"].containing_dir).filePath("config.yml")
+    @property
+    def volume_device(self) -> QAudioDevice | None:
+        return next(
+            (
+                device
+                for device in QMediaDevices.audioOutputs()
+                if device.description() == self.volume
+            ),
+            None,
         )
-    else:
-        _dir: ClassVar[QDir] = QFileInfo(QFile(__file__)).dir()
-        for _ in range(3):
-            if not _dir.cdUp():
-                raise OSError("cd " + _dir.absolutePath() + "/../ 失败")
-        _file: ClassVar[QFile] = QFile(_dir.filePath("config.yml"))
+
+    @volume_device.setter
+    def volume_device(self, value: QAudioDevice | None) -> None:
+        self.volume = value and value.description()
+
+    dir_: ClassVar[QDir]
+    _file: ClassVar[QFile]
 
     @staticmethod
     def from_disk() -> Config:
+        if not QDir().mkpath(
+            QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppLocalDataLocation
+            )
+        ):
+            raise OSError(
+                "程序无法在本地数据目录中创建所需的文件夹，请检查权限或磁盘空间。"
+            )
+        Config.dir_ = QDir(
+            path=QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppLocalDataLocation
+            )
+        )
+        Config._file = QFile(Config.dir_.filePath("config.yml"))
         if Config._file.exists() and Config._file.size() > 0:
             try:
                 return parse_yaml_file_as(
@@ -87,12 +110,19 @@ class Config(BaseModel):
 
     @override
     def __setattr__(self, name: str, value: object) -> None:
-        super().__setattr__(name, value)
-        if name in type(self).model_fields:
-            to_yaml_file(file=self._file.fileName(), model=self)
+        if name not in type(self).model_fields:
+            super().__setattr__(name, value)
+            return
+        old_value: object = getattr(self, name)
+        try:
+            super().__setattr__(name, value)
+        except ValidationError:
+            super().__setattr__(name, old_value)
+            raise
+        to_yaml_file(file=self._file.fileName(), model=self)
 
-    @model_validator(mode="after")
-    def _validate(self) -> Self:
-        if self.left is not None and self.left == self.right:
-            raise ValueError("左右声道输出不能设置相同的设备：" + self.left)
-        return self
+    # @model_validator(mode="after")
+    # def _validate(self) -> Self:
+    #     if self.left is not None and self.left == self.right:
+    #         raise ValueError("左右声道输出不能设置相同的设备：" + self.left)
+    #     return self

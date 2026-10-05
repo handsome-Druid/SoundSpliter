@@ -10,6 +10,18 @@
     <height>600</height>
    </rect>
   </property>
+  <property name="minimumSize">
+   <size>
+    <width>800</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>800</width>
+    <height>600</height>
+   </size>
+  </property>
   <property name="windowTitle">
    <string>SoundSpliter</string>
   </property>
@@ -17,17 +29,14 @@
    <iconset resource="../resources/resources.qrc">
     <normaloff>:/image/icon</normaloff>:/image/icon</iconset>
   </property>
-  <property name="styleSheet">
-   <string notr="true">font-size: 11px</string>
-  </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QLabel" name="iconLabel">
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>0</y>
-      <width>131</width>
-      <height>131</height>
+      <y>30</y>
+      <width>81</width>
+      <height>91</height>
      </rect>
     </property>
     <property name="text">
@@ -46,10 +55,10 @@
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>140</x>
-      <y>0</y>
-      <width>431</width>
-      <height>131</height>
+      <x>90</x>
+      <y>40</y>
+      <width>311</width>
+      <height>61</height>
      </rect>
     </property>
     <property name="font">
@@ -60,82 +69,11 @@
      </font>
     </property>
     <property name="styleSheet">
-     <string notr="true">font-size: 70px</string>
+     <string notr="true">font-size: 50px</string>
     </property>
     <property name="text">
      <string>SoundSpliter</string>
     </property>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>600</x>
-      <y>70</y>
-      <width>181</width>
-      <height>56</height>
-     </rect>
-    </property>
-    <layout class="QGridLayout" name="gridLayout">
-     <item row="0" column="0">
-      <widget class="QLabel" name="leftLatencyLabel">
-       <property name="text">
-        <string>左声道延迟(ms):</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QLineEdit" name="leftLineEdit">
-       <property name="text">
-        <string>0</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="0">
-      <widget class="QLabel" name="rightLatencyLabel">
-       <property name="text">
-        <string>右声道延迟(ms):</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="QLineEdit" name="rightLineEdit">
-       <property name="text">
-        <string>0</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </widget>
-   <widget class="QWidget" name="layoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>580</x>
-      <y>40</y>
-      <width>201</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QLabel" name="sourceLabel">
-       <property name="font">
-        <font>
-         <pointsize>-1</pointsize>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">color: rgb(255, 0, 0)</string>
-       </property>
-       <property name="text">
-        <string>音频输入源未选择！</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="ComboBox" name="comboBox"/>
-     </item>
-    </layout>
    </widget>
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
@@ -184,9 +122,9 @@
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
-      <x>20</x>
+      <x>10</x>
       <y>150</y>
-      <width>761</width>
+      <width>781</width>
       <height>321</height>
      </rect>
     </property>
@@ -230,7 +168,7 @@
    <widget class="QPushButton" name="refreshPushButton">
     <property name="geometry">
      <rect>
-      <x>20</x>
+      <x>10</x>
       <y>120</y>
       <width>91</width>
       <height>26</height>
@@ -239,6 +177,102 @@
     <property name="text">
      <string>刷新输出设备</string>
     </property>
+   </widget>
+   <widget class="QWidget" name="layoutWidget">
+    <property name="geometry">
+     <rect>
+      <x>420</x>
+      <y>10</y>
+      <width>371</width>
+      <height>127</height>
+     </rect>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_3">
+     <item>
+      <widget class="QCheckBox" name="startupCheckBox">
+       <property name="layoutDirection">
+        <enum>Qt::LayoutDirection::RightToLeft</enum>
+       </property>
+       <property name="text">
+        <string>开机自启</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QLabel" name="sourceLabel">
+         <property name="font">
+          <font>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: rgb(255, 0, 0)</string>
+         </property>
+         <property name="text">
+          <string>音频输入源未选择！</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="AudioInputComboBox" name="audioInputComboBox"/>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <item>
+        <widget class="QCheckBox" name="audioCheckBox">
+         <property name="text">
+          <string>音量监听</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="AudioOutputComboBox" name="audioOutputComboBox"/>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_5">
+       <item>
+        <widget class="QLabel" name="leftLatencyLabel">
+         <property name="text">
+          <string>左声道延迟(ms):</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="leftSpinBox">
+         <property name="maximum">
+          <number>999999</number>
+         </property>
+         <property name="singleStep">
+          <number>10</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="rightLatencyLabel">
+         <property name="text">
+          <string>右声道延迟(ms):</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="rightSpinBox">
+         <property name="maximum">
+          <number>999999</number>
+         </property>
+         <property name="singleStep">
+          <number>10</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
    </widget>
   </widget>
   <action name="action">
@@ -249,9 +283,14 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>ComboBox</class>
+   <class>AudioInputComboBox</class>
    <extends>QComboBox</extends>
-   <header>ss.integration.app.widgets.combo_box</header>
+   <header>ss.integration.app.widgets.audio_input_combo_box</header>
+  </customwidget>
+  <customwidget>
+   <class>AudioOutputComboBox</class>
+   <extends>QComboBox</extends>
+   <header>ss.integration.app.widgets.audio_output_combo_box</header>
   </customwidget>
  </customwidgets>
  <resources>
