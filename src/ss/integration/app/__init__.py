@@ -237,7 +237,6 @@ class APP:
                                     break
                         break
             self._ui.refreshPushButton.click()
-            self._started = False
             self._mediadevices.audioInputsChanged.connect(self._on_audio_device_changed)
             self._mediadevices.audioOutputsChanged.connect(
                 self._on_audio_device_changed
@@ -300,8 +299,8 @@ class APP:
 
     @Slot()
     def _on_start_push_button_clicked(self) -> None:
-        self._start(None, None, None)
         self._ui.startPushButton.setEnabled(False)
+        self._start(None, None, None)
         self._ui.refreshPushButton.setEnabled(False)
         self._ui.leftListWidget.setEnabled(False)
         self._ui.rightListWidget.setEnabled(False)
@@ -540,7 +539,10 @@ class APP:
 
     @Slot()
     def _on_audio_device_changed(self) -> None:
-        if not self._started or not self._ui.startPushButton.isEnabled():
+        if (
+            not getattr(self, "_started", False)
+            or not self._ui.startPushButton.isEnabled()
+        ):
             return
         if (
             self._config.source_device is not None
