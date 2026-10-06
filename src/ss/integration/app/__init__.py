@@ -4,8 +4,8 @@ from types import TracebackType
 from typing import NoReturn, Protocol
 
 from pydantic import ValidationError
-from PySide6.QtCore import QEvent, QLockFile, QSettings, Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QIcon
+from PySide6.QtCore import QEvent, QLockFile, QPoint, QRect, QSettings, Qt, QTimer, Slot
+from PySide6.QtGui import QAction, QCloseEvent, QCursor, QGuiApplication, QIcon, QScreen
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QSystemTrayIcon,
+    QWidget,
 )
+from shiboken6 import isValid
 
 from ss.common import Config
 from ss.flow import Start
@@ -49,6 +51,8 @@ class APP:
             self._ui = Ui_MainWindow()
             self._window: QMainWindow = main_window or QMainWindow()
             self._ui.setupUi(MainWindow=self._window)
+            self._message_box = QMessageBox(parent=self._window)
+            self._message_boxes: set[QMessageBox] = set()
             self._app.setApplicationName(self._window.windowTitle())
             self._config: Config = self._di.get(Config)
             self._start: Start = self._di.get(Start)
@@ -73,14 +77,16 @@ class APP:
                 self._ui.stopPushButton.text(), parent=self._window
             )
             self._stop_action.triggered.connect(self._ui.stopPushButton.click)
-            self._quit_action = QAction("退出", self._window)
+            self._quit_action = QAction("退出", parent=self._window)
             self._quit_action.triggered.connect(self._on_quit_action_triggered)
-            self._show_action = QAction("显示主窗口", self._window)
+            self._show_action = QAction("显示主窗口", parent=self._window)
             self._show_action.triggered.connect(self._on_show_action_triggered)
+            self._hide_action = QAction("隐藏到托盘", parent=self._window)
+            self._hide_action.triggered.connect(self._on_hide_action_triggered)
             self._tray_menu = QMenu(
                 self._window.windowTitle(), parent=self._window, icon=icon
             )
-            self._tray_menu.addAction(self._show_action)
+            self._tray_menu.addActions((self._show_action, self._hide_action))
             self._tray_menu.addSeparator()
             self._tray_menu.addActions((self._start_action, self._stop_action))
             self._tray_menu.addSeparator()
@@ -94,7 +100,12 @@ class APP:
                     event.type() == QEvent.Type.WindowStateChange
                     and self._window.isMinimized()
                 ):
-                    self._window.hide()
+                    self._hidden = getattr(self, "_hidden", set())
+                    self._hidden.update(
+                        widget
+                        for widget in self._app.topLevelWidgets()
+                        if widget.isVisible() and widget.hide() is None
+                    )
                     event.accept()
                 else:
                     changeEvent_(event)
@@ -104,15 +115,15 @@ class APP:
 
             def closeEvent(event: QCloseEvent) -> None:
                 if (
-                    QMessageBox.question(
+                    self._message_box.question(
                         self._window,
                         self._app.applicationName(),
                         "确认要退出吗？",
-                        buttons=QMessageBox.StandardButton.Yes
-                        | QMessageBox.StandardButton.No,
-                        defaultButton=QMessageBox.StandardButton.No,
+                        buttons=self._message_box.StandardButton.Yes
+                        | self._message_box.StandardButton.No,
+                        defaultButton=self._message_box.StandardButton.No,
                     )
-                    == QMessageBox.StandardButton.Yes
+                    == self._message_box.StandardButton.Yes
                 ):
                     closeEvent_(event)
                 else:
@@ -146,7 +157,7 @@ class APP:
             self._ui.startPushButton.setEnabled(True)
             self._ui.stopPushButton.setEnabled(False)
             self._ui.startPushButton.clicked.connect(self._on_start_push_button_clicked)
-            self._ui.stopPushButton.clicked.connect(self._on_stop_push_botton_clicked)
+            self._ui.stopPushButton.clicked.connect(self._on_stop_push_button_clicked)
             self._ui.refreshPushButton.clicked.connect(
                 self._on_refresh_push_button_clicked
             )
@@ -232,7 +243,7 @@ class APP:
             )
             self._ui.startPushButton.click()
         except BaseException as e:
-            QMessageBox.critical(
+            getattr(self, "_message_box", QMessageBox).critical(
                 getattr(self, "_window", None),
                 self._app.applicationName() if hasattr(self, "_app") else "Critical",
                 str(e),
@@ -263,11 +274,17 @@ class APP:
         self._stop_action.setEnabled(False)
         if exc_type is not None:
             print(exc_type, exc, tb)
-            QMessageBox.critical(
-                self._window,
+            box = QMessageBox(
+                QMessageBox.Icon.Critical,
                 self._app.applicationName(),
                 str(object=exc) if exc is not None else str(object=exc_type),
+                buttons=QMessageBox.StandardButton.Ok,
+                parent=self._window,
             )
+            self._message_boxes.add(box)
+            box.finished.connect(lambda: self._message_boxes.discard(box))
+            box.finished.connect(box.deleteLater)
+            box.open()
 
     @Slot()
     def _on_start_push_button_clicked(self) -> None:
@@ -287,7 +304,7 @@ class APP:
         self._started = True
 
     @Slot()
-    def _on_stop_push_botton_clicked(self) -> None:
+    def _on_stop_push_button_clicked(self) -> None:
         self._start.__exit__(None, None, None)
         self._started = False
 
@@ -340,11 +357,17 @@ class APP:
         try:
             self._config.left_device = current.data(Qt.ItemDataRole.UserRole)
         except ValidationError as e:
-            QMessageBox.critical(
-                self._window,
+            box = QMessageBox(
+                QMessageBox.Icon.Critical,
                 self._app.applicationName(),
                 str(object=e),
+                buttons=QMessageBox.StandardButton.Ok,
+                parent=self._window,
             )
+            self._message_boxes.add(box)
+            box.finished.connect(lambda: self._message_boxes.discard(box))
+            box.finished.connect(box.deleteLater)
+            box.open()
             QTimer.singleShot(
                 0,
                 lambda: (
@@ -365,11 +388,17 @@ class APP:
         try:
             self._config.right_device = current.data(Qt.ItemDataRole.UserRole)
         except ValidationError as e:
-            QMessageBox.critical(
-                self._window,
+            box = QMessageBox(
+                QMessageBox.Icon.Critical,
                 self._app.applicationName(),
                 str(object=e),
+                buttons=QMessageBox.StandardButton.Ok,
+                parent=self._window,
             )
+            self._message_boxes.add(box)
+            box.finished.connect(lambda: self._message_boxes.discard(box))
+            box.finished.connect(box.deleteLater)
+            box.open()
             QTimer.singleShot(
                 0,
                 lambda: (
@@ -416,13 +445,37 @@ class APP:
             self._on_show_action_triggered()
 
     @Slot()
+    def _on_hide_action_triggered(self) -> None:
+        self._hidden: set[QWidget] = getattr(self, "_hidden", set())
+        self._hidden.update(
+            widget
+            for widget in self._app.topLevelWidgets()
+            if widget.isVisible() and widget.hide() is None
+        )
+
+    @Slot()
     def _on_show_action_triggered(self) -> None:
+        if hasattr(self, "_hidden"):
+            for widget in self._hidden:
+                if isValid(widget):
+                    widget.show()
+            del self._hidden
         if self._window.isMinimized():
             self._window.showNormal()
-        else:
-            self._window.show()
+        screen: QScreen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
+        available: QRect = screen.availableGeometry()
+        center: QPoint = screen.availableGeometry().center()
+        for window in self._app.topLevelWidgets():
+            if window.isVisible() and not available.contains(window.frameGeometry()):
+                window.move(center - window.frameGeometry().center() + window.pos())
         self._window.raise_()
         self._window.activateWindow()
+        modal: QWidget | None = self._app.activeModalWidget()
+        if modal is not None:
+            modal.raise_()
+            modal.activateWindow()
 
     @Slot()
     def _on_quit_action_triggered(self) -> None:

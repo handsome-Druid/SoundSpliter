@@ -1,13 +1,12 @@
 from types import TracebackType
 from typing import Self, override
 
-from PySide6.QtCore import QMutex, QObject, Signal, Slot
+from PySide6.QtCore import QMetaObject, QMutex, QObject, Signal, Slot
 from PySide6.QtMultimedia import QAudioDevice, QAudioSink, QAudioSource
 from shiboken6 import isValid
 
 from ss.common import Config
-from ss.external import Split
-from ss.external.volume import Volume
+from ss.external import Split, Volume
 
 
 class Start(QObject):
@@ -30,29 +29,34 @@ class Start(QObject):
         tb: TracebackType | None,
         /,
     ) -> None:
+        self._mutex.try_lock()
         try:
-            self._mutex.try_lock()
-            self._mutex.unlock()
-            has_split: bool = hasattr(self, "_split") and isValid(self._split)
-            has_volume: bool = hasattr(self, "_volume") and isValid(self._volume)
-            if has_split:
-                self._split.finished.disconnect(self.__exit__)
-            if has_volume:
-                self._volume.finished.disconnect(self.__exit__)
             try:
-                if has_split:
+                if hasattr(self, "_split") and isValid(self._split):
                     try:
-                        self._split.__exit__(exc_type, exc, tb)
+                        if hasattr(self, "_split_conn"):
+                            self._split.finished.disconnect(self._split_conn)
                     finally:
-                        self._split.deleteLater()
+                        try:
+                            self._split.__exit__(exc_type, exc, tb)
+                        finally:
+                            self._split.deleteLater()
             finally:
-                if has_volume:
+                if hasattr(self, "_volume") and isValid(self._volume):
                     try:
-                        self._volume.__exit__(exc_type, exc, tb)
+                        if hasattr(self, "_volume_conn"):
+                            self._volume.finished.disconnect(self._volume_conn)
                     finally:
-                        self._volume.deleteLater()
+                        try:
+                            self._volume.__exit__(exc_type, exc, tb)
+                        finally:
+                            self._volume.deleteLater()
         finally:
-            self.finished.emit(exc_type, exc, tb)
+            try:
+                self._mutex.try_lock()
+                self._mutex.unlock()
+            finally:
+                self.finished.emit(exc_type, exc, tb)
 
     @Slot(object, object, object)
     def __call__(
@@ -91,11 +95,15 @@ class Start(QObject):
                 right_latency=self._config.right_latency,
                 parent=self,
             )
-            self._split.finished.connect(self.__exit__)
+            self._split_conn: QMetaObject.Connection = self._split.finished.connect(
+                self.__exit__
+            )
             self._split(None, None, None)
             if volume is not None:
                 self._volume = Volume(left, right, volume, parent=self)
-                self._volume.finished.connect(self.__exit__)
+                self._volume_conn: QMetaObject.Connection = (
+                    self._volume.finished.connect(self.__exit__)
+                )
                 self._volume(None, None, None)
         except BaseException as e:
             self.__exit__(type(e), e, e.__traceback__)

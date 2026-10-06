@@ -122,30 +122,26 @@ class Split(QObject):
     ) -> None:
         try:
             self._source.device.stop()
-            try:
-                if not hasattr(self, "_ios"):
-                    return
-                self._input.push(frame=None)
-                for index, target in enumerate(iterable=(self._left, self._right)):
-                    while True:
-                        try:
-                            output: AudioFrame = cast(
-                                AudioFrame, self._sinks[index].pull()
-                            )
-                        except EOFError:
-                            break
-                        self._ios[index].write(
-                            bytes(
-                                memoryview(output.planes[0])[
-                                    : output.samples * target.bpf
-                                ]
-                            )
+            if not hasattr(self, "_ios"):
+                return
+            self._input.push(frame=None)
+            for index, target in enumerate(iterable=(self._left, self._right)):
+                while True:
+                    try:
+                        output: AudioFrame = cast(AudioFrame, self._sinks[index].pull())
+                    except EOFError:
+                        break
+                    self._ios[index].write(
+                        bytes(
+                            memoryview(output.planes[0])[: output.samples * target.bpf]
                         )
-            finally:
+                    )
+        finally:
+            try:
                 for target in self._left, self._right:
                     target.device.stop()
-        finally:
-            self.finished.emit(exc_type, exc, tb)
+            finally:
+                self.finished.emit(exc_type, exc, tb)
 
     @Slot(object, object, object)
     def __call__(
