@@ -18,7 +18,7 @@ class DI:
     class _Provider(Provider):
         scope: BaseScope | None = Scope.APP
         _config: CompositeDependencySource = provide(
-            source=lambda self: Config.from_disk(), provides=Config
+            source=staticmethod(Config.from_disk), provides=Config
         )
 
         @provide
