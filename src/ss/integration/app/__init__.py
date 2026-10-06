@@ -36,6 +36,10 @@ class APP:
     def __call__(self) -> NoReturn:
         if not self._hide:
             self._window.show()
+            self._on_show_action_triggered()
+        else:
+            self._hidden = getattr(self, "_hidden", set())
+            self._hidden.add(self._window)
         exit(self._app.exec())
 
     def __init__(self, di: _DI, /, *, main_window: QMainWindow | None = None) -> None:
@@ -273,18 +277,21 @@ class APP:
         self._start_action.setEnabled(True)
         self._stop_action.setEnabled(False)
         if exc_type is not None:
-            print(exc_type, exc, tb)
-            box = QMessageBox(
-                QMessageBox.Icon.Critical,
-                self._app.applicationName(),
-                str(object=exc) if exc is not None else str(object=exc_type),
-                buttons=QMessageBox.StandardButton.Ok,
-                parent=self._window,
-            )
-            self._message_boxes.add(box)
-            box.finished.connect(lambda: self._message_boxes.discard(box))
-            box.finished.connect(box.deleteLater)
-            box.open()
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    str(object=exc) if exc is not None else str(object=exc_type),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._window,
+                )
+                self._message_boxes.add(box)
+                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=exc))
 
     @Slot()
     def _on_start_push_button_clicked(self) -> None:
@@ -357,17 +364,21 @@ class APP:
         try:
             self._config.left_device = current.data(Qt.ItemDataRole.UserRole)
         except ValidationError as e:
-            box = QMessageBox(
-                QMessageBox.Icon.Critical,
-                self._app.applicationName(),
-                str(object=e),
-                buttons=QMessageBox.StandardButton.Ok,
-                parent=self._window,
-            )
-            self._message_boxes.add(box)
-            box.finished.connect(lambda: self._message_boxes.discard(box))
-            box.finished.connect(box.deleteLater)
-            box.open()
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    str(object=e),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._window,
+                )
+                self._message_boxes.add(box)
+                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=e))
             QTimer.singleShot(
                 0,
                 lambda: (
@@ -388,17 +399,21 @@ class APP:
         try:
             self._config.right_device = current.data(Qt.ItemDataRole.UserRole)
         except ValidationError as e:
-            box = QMessageBox(
-                QMessageBox.Icon.Critical,
-                self._app.applicationName(),
-                str(object=e),
-                buttons=QMessageBox.StandardButton.Ok,
-                parent=self._window,
-            )
-            self._message_boxes.add(box)
-            box.finished.connect(lambda: self._message_boxes.discard(box))
-            box.finished.connect(box.deleteLater)
-            box.open()
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    str(object=e),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._window,
+                )
+                self._message_boxes.add(box)
+                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=e))
             QTimer.singleShot(
                 0,
                 lambda: (
@@ -473,7 +488,27 @@ class APP:
         self._window.raise_()
         self._window.activateWindow()
         modal: QWidget | None = self._app.activeModalWidget()
-        if modal is not None:
+        if hasattr(self, "_pending_msg"):
+            box = QMessageBox(
+                QMessageBox.Icon.Critical,
+                self._app.applicationName(),
+                "\n".join(self._pending_msg),
+                buttons=QMessageBox.StandardButton.Ok,
+                parent=self._window,
+            )
+            self._message_boxes.add(box)
+            box.finished.connect(lambda: self._message_boxes.discard(box))
+            box.finished.connect(box.deleteLater)
+            del self._pending_msg
+            box.finished.connect(
+                lambda: (
+                    (modal.raise_(), modal.activateWindow())
+                    if (modal := self._app.activeModalWidget()) is not None
+                    else None
+                )
+            )
+            box.open()
+        elif modal is not None:
             modal.raise_()
             modal.activateWindow()
 
@@ -491,9 +526,8 @@ class APP:
             and self._config.left_device is not None
             and self._config.right_device is not None
         ):
-            for widget in self._app.topLevelWidgets():
-                if isinstance(widget, QMessageBox):
-                    widget.close()
+            for box in self._message_boxes.copy():
+                box.close()
             self._ui.startPushButton.click()
 
     @Slot(Qt.CheckState)
