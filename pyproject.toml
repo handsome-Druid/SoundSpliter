@@ -1,6 +1,6 @@
 [project]
 name = "ss"
-version = "1.0.0b3"
+version = "1.0.0b4"
 description = "Windows 音频分流工具，将输入音频的左右声道分别输出到两个设备，支持音量跟随和延迟调整。"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -27,8 +27,6 @@ dev = [
     "nuitka>=4.2.2",
     "ordered-set>=4.1.0",
     "pyright>=1.1.414",
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
     "zstandard>=0.25.0",
 ]

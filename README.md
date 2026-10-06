@@ -59,7 +59,14 @@ VB-CABLE 的名称是从虚拟声卡的角度命名的：播放器把声音送�
 
 ## 从源码编译
 
-安装 [uv](https://docs.astral.sh/uv/)，在项目目录执行：
+安装 [uv](https://docs.astral.sh/uv/)，在项目目录先将 Qt UI 和资源文件编译为 Python 模块：
+
+```powershell
+uv run pyside6-rcc src\ss\integration\app\resources\resources.qrc -o src\ss\integration\app\resources\resources_rc.py
+uv run pyside6-uic src\ss\integration\app\ui\main_window.ui -o src\ss\integration\app\ui\main_window_ui.py
+```
+
+修改 `.ui`、`.qrc` 或其引用的资源文件后，需要重新执行上述命令。然后打包为单文件可执行程序：
 
 ```powershell
 uv run nuitka --onefile --python-flag=-m --follow-imports --output-dir=build --enable-plugin=pyside6 --noinclude-custom-mode=pydantic.v1:bytecode --include-module=av._cyutil --windows-console-mode=hide --windows-icon-from-ico=resources\icon.ico --include-windows-runtime-dlls=no src\ss
