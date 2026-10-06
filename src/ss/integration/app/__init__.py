@@ -36,7 +36,7 @@ class APP:
     def __call__(self) -> NoReturn:
         if not self._hide:
             self._window.show()
-            self._on_show_action_triggered()
+            self._show_action.trigger()
         else:
             self._hidden = getattr(self, "_hidden", set())
             self._hidden.add(self._window)
@@ -177,12 +177,10 @@ class APP:
             self._ui.leftSpinBox.setValue(self._config.left_latency)
             self._ui.rightSpinBox.setValue(self._config.right_latency)
             self._ui.leftSpinBox.valueChanged.connect(
-                lambda value: self._config.__setattr__(name="left_latency", value=value)
+                self._on_left_spin_box_value_changed
             )
             self._ui.rightSpinBox.valueChanged.connect(
-                lambda value: self._config.__setattr__(
-                    name="right_latency", value=value
-                )
+                self._on_right_spin_box_value_changed
             )
             self._mediadevices = QMediaDevices(parent=self._window)
             self._ui.audioOutputComboBox.setEnabled(False)
@@ -457,7 +455,7 @@ class APP:
     @Slot(QSystemTrayIcon.ActivationReason)
     def _on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._on_show_action_triggered()
+            self._show_action.trigger()
 
     @Slot()
     def _on_hide_action_triggered(self) -> None:
@@ -470,13 +468,13 @@ class APP:
 
     @Slot()
     def _on_show_action_triggered(self) -> None:
+        if self._window.isMinimized():
+            self._window.showNormal()
         if hasattr(self, "_hidden"):
             for widget in self._hidden:
                 if isValid(widget):
                     widget.show()
             del self._hidden
-        if self._window.isMinimized():
-            self._window.showNormal()
         screen: QScreen = (
             QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         )
@@ -537,3 +535,51 @@ class APP:
             self._settings.setValue(self._app.applicationName(), self._startup_command)
         else:
             self._settings.remove(self._app.applicationName())
+
+    @Slot(int)
+    def _on_left_spin_box_value_changed(self, value: int) -> None:
+        try:
+            self._config.left_latency = value
+        except ValidationError as e:
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    str(object=e),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._window,
+                )
+                self._message_boxes.add(box)
+                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=e))
+            QTimer.singleShot(
+                0, lambda: self._ui.leftSpinBox.setValue(self._config.left_latency)
+            )
+
+    @Slot(int)
+    def _on_right_spin_box_value_changed(self, value: int) -> None:
+        try:
+            self._config.right_latency = value
+        except ValidationError as e:
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    str(object=e),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._window,
+                )
+                self._message_boxes.add(box)
+                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=e))
+            QTimer.singleShot(
+                0, lambda: self._ui.rightSpinBox.setValue(self._config.right_latency)
+            )
