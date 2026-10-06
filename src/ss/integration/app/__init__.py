@@ -56,7 +56,6 @@ class APP:
             self._window: QMainWindow = main_window or QMainWindow()
             self._ui.setupUi(MainWindow=self._window)
             self._message_box = QMessageBox(parent=self._window)
-            self._message_boxes: set[QMessageBox] = set()
             self._app.setApplicationName(self._window.windowTitle())
             self._config: Config = self._di.get(Config)
             self._start: Start = self._di.get(Start)
@@ -283,8 +282,16 @@ class APP:
                     buttons=QMessageBox.StandardButton.Ok,
                     parent=self._window,
                 )
+                self._message_boxes: set[QMessageBox] = getattr(
+                    self, "_message_boxes", set()
+                )
                 self._message_boxes.add(box)
-                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
                 box.finished.connect(box.deleteLater)
                 box.open()
             else:
@@ -370,8 +377,14 @@ class APP:
                     buttons=QMessageBox.StandardButton.Ok,
                     parent=self._window,
                 )
+                self._message_boxes = getattr(self, "_message_boxes", set())
                 self._message_boxes.add(box)
-                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
                 box.finished.connect(box.deleteLater)
                 box.open()
             else:
@@ -405,8 +418,14 @@ class APP:
                     buttons=QMessageBox.StandardButton.Ok,
                     parent=self._window,
                 )
+                self._message_boxes = getattr(self, "_message_boxes", set())
                 self._message_boxes.add(box)
-                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
                 box.finished.connect(box.deleteLater)
                 box.open()
             else:
@@ -494,8 +513,12 @@ class APP:
                 buttons=QMessageBox.StandardButton.Ok,
                 parent=self._window,
             )
+            self._message_boxes = getattr(self, "_message_boxes", set())
             self._message_boxes.add(box)
-            box.finished.connect(lambda: self._message_boxes.discard(box))
+            box.finished.connect(
+                lambda: getattr(self, "_message_boxes", set()).discard(box)
+            )
+            box.finished.connect(lambda: getattr(self, "_hidden", set()).discard(box))
             box.finished.connect(box.deleteLater)
             del self._pending_msg
             box.finished.connect(
@@ -524,9 +547,15 @@ class APP:
             and self._config.left_device is not None
             and self._config.right_device is not None
         ):
-            for box in self._message_boxes.copy():
-                box.close()
-            self._pending_msg = []
+            self._hidden = getattr(self, "_hidden", set())
+            if hasattr(self, "_message_boxes"):
+                for box in self._message_boxes.copy():
+                    box.close()
+                    box.deleteLater()
+                    self._hidden.discard(box)
+                del self._message_boxes
+            if hasattr(self, "_pending_msg"):
+                del self._pending_msg
             self._ui.startPushButton.click()
 
     @Slot(Qt.CheckState)
@@ -549,8 +578,14 @@ class APP:
                     buttons=QMessageBox.StandardButton.Ok,
                     parent=self._window,
                 )
+                self._message_boxes = getattr(self, "_message_boxes", set())
                 self._message_boxes.add(box)
-                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
                 box.finished.connect(box.deleteLater)
                 box.open()
             else:
@@ -573,8 +608,14 @@ class APP:
                     buttons=QMessageBox.StandardButton.Ok,
                     parent=self._window,
                 )
+                self._message_boxes = getattr(self, "_message_boxes", set())
                 self._message_boxes.add(box)
-                box.finished.connect(lambda: self._message_boxes.discard(box))
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
                 box.finished.connect(box.deleteLater)
                 box.open()
             else:
