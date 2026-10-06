@@ -12,6 +12,6 @@ class AudioOutputComboBox(QComboBox):
         for device in QMediaDevices.audioOutputs():
             self.addItem(device.description(), userData=device)
         index: int = self.findText(current)
-        if index > 0:
+        if index >= 0:
             self.setCurrentIndex(index)
         super().showPopup()
