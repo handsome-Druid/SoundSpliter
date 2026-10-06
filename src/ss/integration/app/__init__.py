@@ -528,6 +528,7 @@ class APP:
         ):
             for box in self._message_boxes.copy():
                 box.close()
+            self._pending_msg = []
             self._ui.startPushButton.click()
 
     @Slot(Qt.CheckState)
