@@ -1,7 +1,8 @@
 from typing import NoReturn
 
-from .integration import APP, DI
+from .integration import APP, DI, Logger
 
 
 def main() -> NoReturn:
+    Logger()
     APP(DI())()
