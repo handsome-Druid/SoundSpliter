@@ -59,6 +59,9 @@ class Split(QObject):
         self._source: Split._Device = self._handler(source)
         self._left: Split._Device = self._handler(left)
         self._right: Split._Device = self._handler(right)
+        self._left.device.setBufferFrameCount(self._left.rate * 20 // 1000)
+        self._right.device.setBufferFrameCount(self._right.rate * 20 // 1000)
+        self._source.device.setBufferFrameCount(self._source.rate * 10 // 1000)
         graph: Graph = Graph()
         self._input: FilterContext = graph.add_abuffer(
             sample_rate=self._source.rate,
