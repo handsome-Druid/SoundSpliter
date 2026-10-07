@@ -29,7 +29,7 @@ class Logger:
             )
             return super().format(record)
 
-    def __new__(cls):
+    def __new__(cls) -> None:
         handler: StreamHandler[TextIO] = StreamHandler()
         handler.setFormatter(
             fmt=cls._Formatter(
