@@ -5,8 +5,7 @@ from PySide6.QtCore import QMetaObject, QMutex, QObject, Signal, Slot
 from PySide6.QtMultimedia import QAudioDevice, QAudioSink, QAudioSource
 from shiboken6 import isValid
 
-from ss.common import Config
-from ss.external import Split, Volume
+from ss.external import Config, Split, Volume
 
 
 class Start(QObject):
@@ -91,8 +90,11 @@ class Start(QObject):
                 left,
                 right,
                 source,
-                left_latency=self._config.left_latency,
-                right_latency=self._config.right_latency,
+                left_latency=self._config.left_latency_ms,
+                right_latency=self._config.right_latency_ms,
+                left_buffer_time=self._config.left_buffer_time_ms,
+                right_buffer_time=self._config.right_buffer_time_ms,
+                source_buffer_time=self._config.source_buffer_time_ms,
                 parent=self,
             )
             self._split_conn: QMetaObject.Connection = self._split.finished.connect(

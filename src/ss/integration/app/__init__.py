@@ -4,7 +4,17 @@ from types import TracebackType
 from typing import NoReturn, Protocol
 
 from pydantic import ValidationError
-from PySide6.QtCore import QEvent, QLockFile, QPoint, QRect, QSettings, Qt, QTimer, Slot
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QLockFile,
+    QPoint,
+    QRect,
+    QSettings,
+    Qt,
+    QTimer,
+    Slot,
+)
 from PySide6.QtGui import QAction, QCloseEvent, QCursor, QGuiApplication, QIcon, QScreen
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 from PySide6.QtWidgets import (
@@ -19,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ss.common import Config
+from ss.external import Config
 from ss.flow import Start
 
 from .resources import resources_rc
@@ -29,6 +39,10 @@ from .ui import Ui_MainWindow
 
 
 class APP:
+    tr: staticmethod[[str], str] = staticmethod(
+        lambda key: QCoreApplication.translate(APP.__name__, key)
+    )
+
     class _DI(Protocol):
         def get[T](self, _: type[T], /) -> T: ...
         def close(self): ...
@@ -63,9 +77,17 @@ class APP:
             self._lock.setStaleLockTime(0)
             if not self._lock.tryLock(0):
                 if self._lock.error() == QLockFile.LockError.LockFailedError:
-                    raise RuntimeError("已有一个程序实例正在运行，请检查系统托盘。")
+                    raise RuntimeError(
+                        self.tr(
+                            "Another instance is already running. Check the system tray."
+                        )
+                    )
                 else:
-                    raise RuntimeError("无法创建单实例锁，请检查目录权限。")
+                    raise RuntimeError(
+                        self.tr(
+                            "Could not create the single-instance lock. Check the directory permissions."
+                        )
+                    )
             self._window.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, on=False)
             icon = QIcon(":/image/icon")
             self._tray_icon = QSystemTrayIcon(
@@ -80,11 +102,13 @@ class APP:
                 self._ui.stopPushButton.text(), parent=self._window
             )
             self._stop_action.triggered.connect(self._ui.stopPushButton.click)
-            self._quit_action = QAction("退出", parent=self._window)
+            self._quit_action = QAction(self.tr("Exit"), parent=self._window)
             self._quit_action.triggered.connect(self._on_quit_action_triggered)
-            self._show_action = QAction("显示主窗口", parent=self._window)
+            self._show_action = QAction(
+                self.tr("Show Main Window"), parent=self._window
+            )
             self._show_action.triggered.connect(self._on_show_action_triggered)
-            self._hide_action = QAction("隐藏到托盘", parent=self._window)
+            self._hide_action = QAction(self.tr("Hide to Tray"), parent=self._window)
             self._hide_action.triggered.connect(self._on_hide_action_triggered)
             self._tray_menu = QMenu(
                 self._window.windowTitle(), parent=self._window, icon=icon
@@ -121,7 +145,7 @@ class APP:
                     self._message_box.question(
                         self._window,
                         self._app.applicationName(),
-                        "确认要退出吗？",
+                        self.tr("Are you sure you want to exit?"),
                         buttons=self._message_box.StandardButton.Yes
                         | self._message_box.StandardButton.No,
                         defaultButton=self._message_box.StandardButton.No,
@@ -173,8 +197,8 @@ class APP:
             self._ui.audioInputComboBox.activated.connect(
                 self._on_audio_input_combo_box_activated
             )
-            self._ui.leftSpinBox.setValue(self._config.left_latency)
-            self._ui.rightSpinBox.setValue(self._config.right_latency)
+            self._ui.leftSpinBox.setValue(self._config.left_latency_ms)
+            self._ui.rightSpinBox.setValue(self._config.right_latency_ms)
             self._ui.leftSpinBox.valueChanged.connect(
                 self._on_left_spin_box_value_changed
             )
@@ -207,7 +231,7 @@ class APP:
                 self._ui.audioInputComboBox.setCurrentIndex(
                     self._ui.audioInputComboBox.count() - 1
                 )
-                self._ui.sourceLabel.setText("音频输入源已选择：")
+                self._ui.sourceLabel.setText(self.tr("Audio input source selected:"))
                 self._ui.sourceLabel.setStyleSheet("color: rgb(40, 167, 69)")
             else:
                 for device in self._mediadevices.audioInputs():
@@ -219,7 +243,9 @@ class APP:
                         self._ui.audioInputComboBox.setCurrentIndex(
                             self._ui.audioInputComboBox.count() - 1
                         )
-                        self._ui.sourceLabel.setText("音频输入源已选择：")
+                        self._ui.sourceLabel.setText(
+                            self.tr("Audio input source selected:")
+                        )
                         self._ui.sourceLabel.setStyleSheet("color: rgb(40, 167, 69)")
                         self._config.source_device = device
                         if not self._ui.audioCheckBox.isChecked():
@@ -341,7 +367,7 @@ class APP:
             Qt.ItemDataRole.UserRole
         )
         self._config.source_device = device
-        self._ui.sourceLabel.setText("音频输入源已选择：")
+        self._ui.sourceLabel.setText(self.tr("Audio input source selected:"))
         self._ui.sourceLabel.setStyleSheet("color: rgb(40, 167, 69)")
         if "CABLE Output" in device.description():
             for device in self._mediadevices.audioOutputs():
@@ -570,7 +596,7 @@ class APP:
     @Slot(int)
     def _on_left_spin_box_value_changed(self, value: int) -> None:
         try:
-            self._config.left_latency = value
+            self._config.left_latency_ms = value
         except ValidationError as e:
             if self._window.isVisible():
                 box = QMessageBox(
@@ -594,13 +620,13 @@ class APP:
                 self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
                 self._pending_msg.append(str(object=e))
             QTimer.singleShot(
-                0, lambda: self._ui.leftSpinBox.setValue(self._config.left_latency)
+                0, lambda: self._ui.leftSpinBox.setValue(self._config.left_latency_ms)
             )
 
     @Slot(int)
     def _on_right_spin_box_value_changed(self, value: int) -> None:
         try:
-            self._config.right_latency = value
+            self._config.right_latency_ms = value
         except ValidationError as e:
             if self._window.isVisible():
                 box = QMessageBox(
@@ -624,5 +650,5 @@ class APP:
                 self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
                 self._pending_msg.append(str(object=e))
             QTimer.singleShot(
-                0, lambda: self._ui.rightSpinBox.setValue(self._config.right_latency)
+                0, lambda: self._ui.rightSpinBox.setValue(self._config.right_latency_ms)
             )

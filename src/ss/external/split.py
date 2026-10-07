@@ -161,6 +161,9 @@ class Split(QObject):
         source: QAudioSource,
         left_latency: int = 0,
         right_latency: int = 0,
+        left_buffer_time: int = 30,
+        right_buffer_time: int = 30,
+        source_buffer_time: int = 20,
         parent: QObject | None = None,
         *,
         objectName: str | None = None,
@@ -170,9 +173,15 @@ class Split(QObject):
         self._source: Split._Device = self._handler(source)
         self._left: Split._Device = self._handler(left)
         self._right: Split._Device = self._handler(right)
-        self._left.device.setBufferFrameCount(self._left.rate * 30 // 1000)
-        self._right.device.setBufferFrameCount(self._right.rate * 30 // 1000)
-        self._source.device.setBufferFrameCount(self._source.rate * 20 // 1000)
+        self._left.device.setBufferFrameCount(
+            self._left.rate * left_buffer_time // 1000
+        )
+        self._right.device.setBufferFrameCount(
+            self._right.rate * right_buffer_time // 1000
+        )
+        self._source.device.setBufferFrameCount(
+            self._source.rate * source_buffer_time // 1000
+        )
         self._source.device.stateChanged.connect(self._on_state_changed)
         graph: Graph = Graph()
         self._input: FilterContext = graph.add_abuffer(

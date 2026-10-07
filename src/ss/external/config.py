@@ -1,22 +1,17 @@
 from typing import ClassVar, override
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ConfigDict, ValidationError
 from pydantic_yaml import (
-    parse_yaml_file_as,
     to_yaml_file,  # pyright: ignore[reportUnknownVariableType]
 )
 from PySide6.QtCore import QDir, QFile, QStandardPaths
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 
+from ss.common.migration import V2, Migration
 
-class Config(BaseModel):
-    # model_config = ConfigDict(validate_assignment=True)
-    left: str | None = None
-    right: str | None = None
-    source: str | None = None
-    volume: str | None = None
-    left_latency: int = Field(default=0, ge=0)
-    right_latency: int = Field(default=0, ge=0)
+
+class Config(V2):
+    model_config = ConfigDict(validate_assignment=True, from_attributes=True)
 
     @property
     def left_device(self) -> QAudioDevice | None:
@@ -98,12 +93,7 @@ class Config(BaseModel):
         )
         Config._file = QFile(Config.dir_.filePath("config.yml"))
         if Config._file.exists() and Config._file.size() > 0:
-            try:
-                return parse_yaml_file_as(
-                    model_type=Config, file=Config._file.fileName()
-                )
-            except ValidationError:
-                pass
+            return Config.model_validate(obj=Migration(Config._file.fileName()))
         config = Config()
         to_yaml_file(file=Config._file.fileName(), model=config)
         return config
@@ -120,9 +110,3 @@ class Config(BaseModel):
             super().__setattr__(name, old_value)
             raise
         to_yaml_file(file=self._file.fileName(), model=self)
-
-    # @model_validator(mode="after")
-    # def _validate(self) -> Self:
-    #     if self.left is not None and self.left == self.right:
-    #         raise ValueError("左右声道输出不能设置相同的设备：" + self.left)
-    #     return self
