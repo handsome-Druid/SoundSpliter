@@ -117,11 +117,13 @@ class Volume(QObject):
         tb: TracebackType | None,
         /,
     ) -> None:
+        is_running: bool = not self._mutex.try_lock()
         try:
-            if not self._mutex.try_lock():
+            if is_running:
                 self._device.EndpointVolume.UnregisterControlChangeNotify(
                     self._callback
                 )
-            self._mutex.unlock()
         finally:
-            self.finished.emit(exc_type, exc, tb)
+            self._mutex.unlock()
+            if is_running:
+                self.finished.emit(exc_type, exc, tb)

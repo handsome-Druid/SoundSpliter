@@ -28,7 +28,7 @@ class Start(QObject):
         tb: TracebackType | None,
         /,
     ) -> None:
-        self._mutex.try_lock()
+        is_running: bool = not self._mutex.try_lock()
         try:
             try:
                 if hasattr(self, "_split") and isValid(self._split):
@@ -51,10 +51,8 @@ class Start(QObject):
                         finally:
                             self._volume.deleteLater()
         finally:
-            try:
-                self._mutex.try_lock()
-                self._mutex.unlock()
-            finally:
+            self._mutex.unlock()
+            if is_running:
                 self.finished.emit(exc_type, exc, tb)
 
     @Slot(object, object, object)

@@ -10,6 +10,7 @@ from av.filter.context import FilterContext
 from PySide6.QtCore import (
     QIODevice,
     QMetaObject,
+    QMutex,
     QObject,
     Qt,
     QThread,
@@ -27,6 +28,7 @@ class Split(QObject):
     _channel_names: ClassVar[list[str]] = ["左声道输出", "右声道输出"]
     _source_io: QIODevice
     _ios: tuple[QIODevice, QIODevice]
+    _mutex = QMutex()
 
     class _Thread(QThread):
         @override
@@ -244,6 +246,7 @@ class Split(QObject):
         tb: TracebackType | None,
         /,
     ) -> None:
+        is_running: bool = not self._mutex.try_lock()
         try:
             self._source.device.stop()
             if (
@@ -256,6 +259,8 @@ class Split(QObject):
                 self._thread.started.disconnect(self._thread_conn)
             self._thread.requestInterruption()
             if not self._thread.wait(1000):
+                self._logger.warning(msg="音频线程清理失败")
+                self._thread.setParent(self.parent())
                 self._thread.finished.connect(self._thread.deleteLater)
                 self._thread = self._Thread(parent=self)
         finally:
@@ -263,7 +268,9 @@ class Split(QObject):
                 for target in self._left, self._right:
                     target.device.stop()
             finally:
-                self.finished.emit(exc_type, exc, tb)
+                self._mutex.unlock()
+                if is_running:
+                    self.finished.emit(exc_type, exc, tb)
 
     def _finalize(self):
         if not hasattr(self, "_ios"):
@@ -291,12 +298,9 @@ class Split(QObject):
             if exc_type is not None:
                 self.__exit__(exc_type, exc, tb)
                 return
-            if (
-                self._source.device.state() != QtAudio.State.StoppedState
-                and self._thread.isRunning()
-            ):
+            if not self._mutex.try_lock():
                 return
-            elif self._thread.isRunning() ^ (
+            elif self._thread.isRunning() or (
                 self._source.device.state() != QtAudio.State.StoppedState
             ):
                 raise RuntimeError("上次退出清理没有完成；正在尝试重新清理")
@@ -332,32 +336,28 @@ class Split(QObject):
 
     # @Slot()
     def _on_ready_read(self) -> None:
-        try:
-            data: bytes = cast(bytes, self._source_io.readAll())
-            if not data:
-                return
-            frame: AudioFrame = AudioFrame(
-                format=self._source.format,
-                layout=self._source.layout,
-                samples=len(data) // self._source.bpf,
-            )
-            frame.sample_rate = self._source.rate
-            memoryview(frame.planes[0])[:] = memoryview(data)
-            self._input.push(frame=frame)
-            for index, target in enumerate(iterable=(self._left, self._right)):
-                while True:
-                    try:
-                        output: AudioFrame = cast(AudioFrame, self._sinks[index].pull())
-                    except BlockingIOError:
-                        break
-                    payload: bytes = bytes(
-                        memoryview(output.planes[0])[: output.samples * target.bpf]
+        data: bytes = cast(bytes, self._source_io.readAll())
+        if not data:
+            return
+        frame: AudioFrame = AudioFrame(
+            format=self._source.format,
+            layout=self._source.layout,
+            samples=len(data) // self._source.bpf,
+        )
+        frame.sample_rate = self._source.rate
+        memoryview(frame.planes[0])[:] = memoryview(data)
+        self._input.push(frame=frame)
+        for index, target in enumerate(iterable=(self._left, self._right)):
+            while True:
+                try:
+                    output: AudioFrame = cast(AudioFrame, self._sinks[index].pull())
+                except BlockingIOError:
+                    break
+                payload: bytes = bytes(
+                    memoryview(output.planes[0])[: output.samples * target.bpf]
+                )
+                written: int = self._ios[index].write(payload)
+                if written != len(payload):
+                    self._logger.warning(
+                        msg=f"{self._channel_names[index]}发生音频短写：{written} / {len(payload)} bytes"
                     )
-                    written: int = self._ios[index].write(payload)
-                    if written != len(payload):
-                        self._logger.warning(
-                            msg=f"{self._channel_names[index]}发生音频短写：{written} / {len(payload)} bytes"
-                        )
-        except BaseException as e:
-            self.__exit__(type(e), e, e.__traceback__)
-            raise
