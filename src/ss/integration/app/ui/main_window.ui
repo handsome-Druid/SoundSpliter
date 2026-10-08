@@ -33,10 +33,10 @@
    <widget class="QLabel" name="iconLabel">
     <property name="geometry">
      <rect>
-      <x>0</x>
-      <y>10</y>
-      <width>131</width>
-      <height>131</height>
+      <x>20</x>
+      <y>0</y>
+      <width>201</width>
+      <height>201</height>
      </rect>
     </property>
     <property name="text">
@@ -55,10 +55,10 @@
    <widget class="QLabel" name="soundLabel">
     <property name="geometry">
      <rect>
-      <x>120</x>
-      <y>0</y>
+      <x>220</x>
+      <y>20</y>
       <width>171</width>
-      <height>71</height>
+      <height>81</height>
      </rect>
     </property>
     <property name="font">
@@ -69,7 +69,7 @@
      </font>
     </property>
     <property name="styleSheet">
-     <string notr="true">font-size: 50px</string>
+     <string notr="true">font-size: 60px</string>
     </property>
     <property name="text">
      <string>Sound</string>
@@ -97,7 +97,7 @@
         <string notr="true">font-size: 16px</string>
        </property>
        <property name="text">
-        <string>开始分流</string>
+        <string>Start Splitting</string>
        </property>
       </widget>
      </item>
@@ -113,7 +113,7 @@
         <string notr="true">font-size: 16px</string>
        </property>
        <property name="text">
-        <string>停止分流</string>
+        <string>Stop Splitting</string>
        </property>
       </widget>
      </item>
@@ -123,9 +123,9 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>170</y>
+      <y>220</y>
       <width>781</width>
-      <height>301</height>
+      <height>251</height>
      </rect>
     </property>
     <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -137,7 +137,7 @@
           <string notr="true">font-size: 15px</string>
          </property>
          <property name="text">
-          <string>选择左声道输出：</string>
+          <string>Select left channel output:</string>
          </property>
         </widget>
        </item>
@@ -147,7 +147,7 @@
           <string notr="true">font-size: 15px</string>
          </property>
          <property name="text">
-          <string>选择右声道输出：</string>
+          <string>Select right channel output:</string>
          </property>
         </widget>
        </item>
@@ -169,21 +169,21 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>140</y>
-      <width>91</width>
+      <y>190</y>
+      <width>161</width>
       <height>26</height>
      </rect>
     </property>
     <property name="text">
-     <string>刷新输出设备</string>
+     <string>Refresh Output Devices</string>
     </property>
    </widget>
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
-      <x>360</x>
-      <y>40</y>
-      <width>431</width>
+      <x>250</x>
+      <y>90</y>
+      <width>541</width>
       <height>127</height>
      </rect>
     </property>
@@ -194,7 +194,7 @@
         <enum>Qt::LayoutDirection::RightToLeft</enum>
        </property>
        <property name="text">
-        <string>开机自启</string>
+        <string>Launch at Startup</string>
        </property>
       </widget>
      </item>
@@ -214,7 +214,7 @@
           <string notr="true">color: rgb(255, 0, 0)</string>
          </property>
          <property name="text">
-          <string>音频输入源未选择！</string>
+          <string>No audio input source selected!</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
@@ -234,7 +234,7 @@
           <enum>Qt::LayoutDirection::RightToLeft</enum>
          </property>
          <property name="text">
-          <string>音量监听</string>
+          <string>Volume Monitoring</string>
          </property>
         </widget>
        </item>
@@ -248,7 +248,7 @@
        <item>
         <widget class="QLabel" name="leftLatencyLabel">
          <property name="text">
-          <string>左声道延迟(ms):</string>
+          <string>Left channel latency (ms):</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
@@ -268,7 +268,7 @@
        <item>
         <widget class="QLabel" name="rightLatencyLabel">
          <property name="text">
-          <string>右声道延迟(ms):</string>
+          <string>Right channel latency (ms):</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
@@ -292,8 +292,8 @@
    <widget class="QLabel" name="splitterLabel">
     <property name="geometry">
      <rect>
-      <x>140</x>
-      <y>50</y>
+      <x>390</x>
+      <y>20</y>
       <width>231</width>
       <height>81</height>
      </rect>
@@ -306,13 +306,13 @@
      </font>
     </property>
     <property name="styleSheet">
-     <string notr="true">font-size: 50px</string>
+     <string notr="true">font-size: 60px</string>
     </property>
     <property name="text">
      <string>Splitter</string>
     </property>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>590</x>
@@ -333,16 +333,11 @@
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="comboBox"/>
+      <widget class="QComboBox" name="languageComboBox"/>
      </item>
     </layout>
    </widget>
   </widget>
-  <action name="action">
-   <property name="text">
-    <string>首选项...</string>
-   </property>
-  </action>
  </widget>
  <customwidgets>
   <customwidget>

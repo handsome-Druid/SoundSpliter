@@ -11,3 +11,4 @@ class V2(BaseModel):
     left_buffer_time_ms: int = Field(default=30, ge=0)
     right_buffer_time_ms: int = Field(default=30, ge=0)
     source_buffer_time_ms: int = Field(default=20, ge=0)
+    language: str = "en_US"

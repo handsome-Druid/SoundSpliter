@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from sys import argv, exit, modules
 from types import TracebackType
 from typing import NoReturn, Protocol
@@ -6,13 +6,17 @@ from typing import NoReturn, Protocol
 from pydantic import ValidationError
 from PySide6.QtCore import (
     QCoreApplication,
+    QDir,
     QEvent,
+    QLibraryInfo,
+    QLocale,
     QLockFile,
     QPoint,
     QRect,
     QSettings,
     Qt,
     QTimer,
+    QTranslator,
     Slot,
 )
 from PySide6.QtGui import QAction, QCloseEvent, QCursor, QGuiApplication, QIcon, QScreen
@@ -39,8 +43,8 @@ from .ui import Ui_MainWindow
 
 
 class APP:
-    tr: staticmethod[[str], str] = staticmethod(
-        lambda key: QCoreApplication.translate(APP.__name__, key)
+    tr: classmethod[APP, [str], str] = classmethod(
+        lambda cls, key: QCoreApplication.translate(cls.__name__, key)
     )
 
     class _DI(Protocol):
@@ -123,19 +127,29 @@ class APP:
             changeEvent_: Callable[[QEvent], None] = self._window.changeEvent
 
             def changeEvent(event: QEvent) -> None:
-                if (
-                    event.type() == QEvent.Type.WindowStateChange
-                    and self._window.isMinimized()
-                ):
-                    self._hidden = getattr(self, "_hidden", set())
-                    self._hidden.update(
-                        widget
-                        for widget in self._app.topLevelWidgets()
-                        if widget.isVisible() and widget.hide() is None
-                    )
-                    event.accept()
-                else:
-                    changeEvent_(event)
+                match event.type():
+                    case QEvent.Type.WindowStateChange if self._window.isMinimized():
+                        self._hidden = getattr(self, "_hidden", set())
+                        self._hidden.update(
+                            widget
+                            for widget in self._app.topLevelWidgets()
+                            if widget.isVisible() and widget.hide() is None
+                        )
+                        event.accept()
+                    case QEvent.Type.LanguageChange:
+                        self._ui.retranslateUi(MainWindow=self._window)
+                        self._start_action.setText(self._ui.startPushButton.text())
+                        self._stop_action.setText(self._ui.stopPushButton.text())
+                        self._quit_action.setText(self.tr("Exit"))
+                        self._show_action.setText(self.tr("Show Main Window"))
+                        self._hide_action.setText(self.tr("Hide to Tray"))
+                        if self._ui.audioInputComboBox.currentData() is not None:
+                            self._ui.sourceLabel.setText(
+                                self.tr("Audio input source selected:")
+                            )
+                        changeEvent_(event)
+                    case _:
+                        changeEvent_(event)
 
             self._window.changeEvent = changeEvent
             closeEvent_: Callable[[QCloseEvent], None] = self._window.closeEvent
@@ -180,6 +194,86 @@ class APP:
             else:
                 self._ui.startupCheckBox.setEnabled(False)
                 self._ui.startupCheckBox.hide()
+            show_popup: Callable[[], None] = self._ui.languageComboBox.showPopup
+            translation_dir = QDir(
+                path=self._config.containing_dir.filePath("translation")
+            )
+            qt_path: str = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+
+            def showPopup() -> None:
+                current = self._ui.languageComboBox.currentText()
+                self._ui.languageComboBox.clear()
+                self._ui.languageComboBox.addItem("en_US")
+                for file in translation_dir.entryList(
+                    ["*.qm"], filters=QDir.Filter.Files
+                ):
+                    translator = QTranslator()
+                    if not translator.load(translation_dir.filePath(file)):
+                        continue
+                    locale: QLocale | None = None
+                    locale_ = QLocale(translator.language())
+                    if locale_.language() != QLocale.Language.C:
+                        locale = locale_
+                    else:
+                        locale_ = QLocale(file.removesuffix(".qm").replace("-", "_"))
+                        if locale_.language() != QLocale.Language.C:
+                            locale = locale_
+                    qt_translator = None
+                    if locale is not None:
+                        qt_translator = QTranslator()
+                        if not qt_translator.load(
+                            locale, "qtbase", "_", directory=qt_path
+                        ):
+                            qt_translator = None
+                    self._ui.languageComboBox.addItem(
+                        locale.name() if locale is not None else file,
+                        userData=(qt_translator, translator),
+                    )
+                index: int = self._ui.languageComboBox.findText(current)
+                if index >= 0:
+                    self._ui.languageComboBox.setCurrentIndex(index)
+                show_popup()
+
+            self._ui.languageComboBox.showPopup = showPopup
+            self._ui.languageComboBox.addItem("en_US")
+            self._ui.languageComboBox.setCurrentIndex(
+                self._ui.languageComboBox.count() - 1
+            )
+            for file in translation_dir.entryList(["*.qm"], filters=QDir.Filter.Files):
+                translator = QTranslator()
+                if not translator.load(translation_dir.filePath(file)):
+                    continue
+                locale: QLocale | None = None
+                locale_ = QLocale(translator.language())
+                if locale_.language() != QLocale.Language.C:
+                    locale = locale_
+                else:
+                    locale_ = QLocale(file.removesuffix(".qm").replace("-", "_"))
+                    if locale_.language() != QLocale.Language.C:
+                        locale = locale_
+                if (
+                    locale is not None and locale.name() == self._config.language
+                ) or file == self._config.language:
+                    if locale is not None:
+                        qt_translator = QTranslator()
+                        if qt_translator.load(locale, "qtbase", "_", directory=qt_path):
+                            self._app.installTranslator(qt_translator)
+                        else:
+                            qt_translator = None
+                    else:
+                        qt_translator = None
+                    self._app.installTranslator(translator)
+                    self._translators = (qt_translator, translator)
+                    self._ui.languageComboBox.addItem(
+                        locale.name() if locale is not None else file, self._translators
+                    )
+                    self._ui.languageComboBox.setCurrentIndex(
+                        self._ui.languageComboBox.count() - 1
+                    )
+                    break
+            self._ui.languageComboBox.activated.connect(
+                self._on_language_combo_box_activated
+            )
             self._start.finished.connect(self._on_start_finished)
             self._ui.startPushButton.setEnabled(True)
             self._ui.stopPushButton.setEnabled(False)
@@ -652,3 +746,21 @@ class APP:
             QTimer.singleShot(
                 0, lambda: self._ui.rightSpinBox.setValue(self._config.right_latency_ms)
             )
+
+    @Slot()
+    def _on_language_combo_box_activated(self) -> None:
+        translators: Collection[QTranslator | None] | None = getattr(
+            self, "_translators", None
+        )
+        if translators is not None:
+            for translator in translators:
+                if translator is not None:
+                    self._app.removeTranslator(translator)
+        self._translators: Collection[QTranslator | None] | None = (
+            self._ui.languageComboBox.currentData(Qt.ItemDataRole.UserRole)
+        )
+        if self._translators is not None:
+            for translator in self._translators:
+                if translator is not None:
+                    self._app.installTranslator(translator)
+        self._config.language = self._ui.languageComboBox.currentText()

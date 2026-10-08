@@ -4,7 +4,7 @@ from pydantic import ConfigDict, ValidationError
 from pydantic_yaml import (
     to_yaml_file,  # pyright: ignore[reportUnknownVariableType]
 )
-from PySide6.QtCore import QDir, QFile, QStandardPaths
+from PySide6.QtCore import QCoreApplication, QDir, QFile, QFileInfo, QStandardPaths
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 
 from ss.common.migration import V2, Migration
@@ -12,6 +12,9 @@ from ss.common.migration import V2, Migration
 
 class Config(V2):
     model_config = ConfigDict(validate_assignment=True, from_attributes=True)
+    tr: ClassVar[classmethod[Config, [str], str]] = classmethod(
+        lambda cls, key: QCoreApplication.translate(cls.__name__, key)
+    )
 
     @property
     def left_device(self) -> QAudioDevice | None:
@@ -74,17 +77,30 @@ class Config(V2):
         self.volume = value and value.description()
 
     dir_: ClassVar[QDir]
+    containing_dir: ClassVar[QDir]
     _file: ClassVar[QFile]
 
     @staticmethod
     def from_disk() -> Config:
+        if "__compiled__" in globals():
+            Config.containing_dir = QDir(globals()["__compiled__"].containing_dir)
+        else:
+            Config.containing_dir = QFileInfo(__file__).absoluteDir()
+            for _ in range(3):
+                if not Config.containing_dir.cdUp():
+                    raise OSError(
+                        f"cd {Config.containing_dir.path()}/../" + Config.tr(" failed.")
+                    )
         if not QDir().mkpath(
             QStandardPaths.writableLocation(
                 QStandardPaths.StandardLocation.AppLocalDataLocation
             )
         ):
             raise OSError(
-                "程序无法在本地数据目录中创建所需的文件夹，请检查权限或磁盘空间。"
+                Config.tr(
+                    "Unable to create the required folder in the local data directory. "
+                    "Please check permissions or available disk space."
+                )
             )
         Config.dir_ = QDir(
             path=QStandardPaths.writableLocation(

@@ -1,8 +1,19 @@
-from ctypes import POINTER, byref, c_bool, c_int, c_ulong, c_void_p, c_wchar_p, windll
+from ctypes import (
+    POINTER,
+    FormatError,
+    WinDLL,
+    byref,
+    c_bool,
+    c_int,
+    c_ulong,
+    c_void_p,
+    c_wchar_p,
+    get_last_error,
+)
 from fractions import Fraction
 from logging import Logger, getLogger
 from types import MethodType, TracebackType
-from typing import ClassVar, NamedTuple, Self, cast, override
+from typing import NamedTuple, Self, cast, override
 
 from av import AudioFormat, AudioFrame, AudioLayout
 from av.filter import Graph
@@ -25,9 +36,6 @@ from shiboken6 import isValid
 class Split(QObject):
     finished = Signal(object, object, object)
     _logger: Logger = getLogger(name=__name__)
-    _channel_names: ClassVar[list[str]] = ["左声道输出", "右声道输出"]
-    _source_io: QIODevice
-    _ios: tuple[QIODevice, QIODevice]
     _mutex = QMutex()
 
     class _Thread(QThread):
@@ -37,30 +45,46 @@ class Split(QObject):
 
         @override
         def run(self) -> None:
-            windll.avrt.AvSetMmThreadCharacteristicsW.restype = c_void_p
-            windll.avrt.AvSetMmThreadCharacteristicsW.argtypes = [
+            avrt = WinDLL(name="avrt", use_last_error=True)
+            avrt.AvSetMmThreadCharacteristicsW.restype = c_void_p
+            avrt.AvSetMmThreadCharacteristicsW.argtypes = [
                 c_wchar_p,
                 POINTER(cls=c_ulong),
             ]
-            windll.avrt.AvSetMmThreadPriority.restype = c_bool
-            windll.avrt.AvSetMmThreadPriority.argtypes = [c_void_p, c_int]
-            handle = windll.avrt.AvSetMmThreadCharacteristicsW(
+            avrt.AvSetMmThreadPriority.restype = c_bool
+            avrt.AvSetMmThreadPriority.argtypes = [c_void_p, c_int]
+            handle: int | None = avrt.AvSetMmThreadCharacteristicsW(
                 "Pro Audio", byref(c_ulong())
             )
-            if not handle:
-                Split._logger.warning(msg="MMCSS 注册失败，线程将按普通优先级运行")
+            if handle is None:
+                error_code: int = get_last_error()
+                Split._logger.warning(
+                    self.tr(
+                        "MMCSS registration failed (Windows error %s: %s); "
+                        "the thread will run at normal priority"
+                    ),
+                    error_code,
+                    FormatError(error_code).strip(),
+                )
                 self._handle = None
             else:
                 self._handle = c_void_p(handle)
-                if not windll.avrt.AvSetMmThreadPriority(self._handle, 2):
-                    Split._logger.warning(msg="MMCSS 线程优先级设置失败")
+                if not avrt.AvSetMmThreadPriority(self._handle, 2):
+                    error_code: int = get_last_error()
+                    Split._logger.warning(
+                        self.tr(
+                            "Failed to set MMCSS thread priority (Windows error %s: %s)"
+                        ),
+                        error_code,
+                        FormatError(error_code).strip(),
+                    )
             try:
                 super().run()
             finally:
                 if self._handle is not None:
-                    windll.avrt.AvRevertMmThreadCharacteristics.restype = c_bool
-                    windll.avrt.AvRevertMmThreadCharacteristics.argtypes = [c_void_p]
-                    windll.avrt.AvRevertMmThreadCharacteristics(self._handle)
+                    avrt.AvRevertMmThreadCharacteristics.restype = c_bool
+                    avrt.AvRevertMmThreadCharacteristics.argtypes = [c_void_p]
+                    avrt.AvRevertMmThreadCharacteristics(self._handle)
 
     class _Timer(QObject):
         finished = Signal(object, object, object)
@@ -171,6 +195,10 @@ class Split(QObject):
         objectName: str | None = None,
     ) -> None:
         super().__init__(parent, objectName=objectName)
+        self._channel_names: list[str] = [
+            self.tr("Left channel output"),
+            self.tr("Right channel output"),
+        ]
         self._thread = self._Thread(parent=self)
         self._source: Split._Device = self._handler(source)
         self._left: Split._Device = self._handler(left)
@@ -259,7 +287,7 @@ class Split(QObject):
                 self._thread.started.disconnect(self._thread_conn)
             self._thread.requestInterruption()
             if not self._thread.wait(1000):
-                self._logger.warning(msg="音频线程清理失败")
+                self._logger.warning(msg=self.tr("Failed to clean up the audio thread"))
                 self._thread.setParent(self.parent())
                 self._thread.finished.connect(self._thread.deleteLater)
                 self._thread = self._Thread(parent=self)
@@ -303,7 +331,9 @@ class Split(QObject):
             elif self._thread.isRunning() or (
                 self._source.device.state() != QtAudio.State.StoppedState
             ):
-                raise RuntimeError("上次退出清理没有完成；正在尝试重新清理")
+                raise RuntimeError(
+                    self.tr("Previous shutdown cleanup is incomplete; retrying cleanup")
+                )
             self._source_io: QIODevice = self._source.device.start()
             self._source_io.moveToThread(self._thread)
             self._ios: tuple[QIODevice, QIODevice] = (
@@ -332,7 +362,11 @@ class Split(QObject):
     @Slot(QtAudio.State)
     def _on_state_changed(self, state: QtAudio.State) -> None:
         if state == QtAudio.State.IdleState:
-            self._logger.warning(msg="输入源缓冲区已满，音频数据已被丢弃")
+            self._logger.warning(
+                msg=self.tr(
+                    "The input source buffer is full; audio data has been discarded"
+                )
+            )
 
     # @Slot()
     def _on_ready_read(self) -> None:
@@ -359,5 +393,10 @@ class Split(QObject):
                 written: int = self._ios[index].write(payload)
                 if written != len(payload):
                     self._logger.warning(
-                        msg=f"{self._channel_names[index]}发生音频短写：{written} / {len(payload)} bytes"
+                        msg=self._channel_names[index]
+                        + self.tr(" audio short write: ")
+                        + str(written)
+                        + " / "
+                        + str(len(payload))
+                        + self.tr(" bytes")
                     )

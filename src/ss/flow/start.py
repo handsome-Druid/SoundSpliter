@@ -74,13 +74,15 @@ class Start(QObject):
             source_device: QAudioDevice | None = self._config.source_device
             volume: QAudioDevice | None = self._config.volume_device
             if left_device is None:
-                raise RuntimeError("未选择左声道输出")
+                raise RuntimeError(self.tr("No left channel output selected"))
             if right_device is None:
-                raise RuntimeError("未选择右声道输出")
+                raise RuntimeError(self.tr("No right channel output selected"))
             if source_device is None:
-                raise RuntimeError("未选择音频输入源")
+                raise RuntimeError(self.tr("No audio input source selected"))
             if left_device == right_device:
-                raise RuntimeError("左右声道输出不能为同一个设备")
+                raise RuntimeError(
+                    self.tr("Left and right channel outputs cannot use the same device")
+                )
             left = QAudioSink(left_device)
             right = QAudioSink(right_device)
             source = QAudioSource(source_device)
