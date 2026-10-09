@@ -166,15 +166,34 @@ class Start(QObject):
             source = QAudioSource(source_device)
             left_fmt: QAudioFormat = self._left.format()
             right_fmt: QAudioFormat = self._right.format()
+            left_sample_rate: int = left_fmt.sampleRate()
+            right_sample_rate: int = right_fmt.sampleRate()
             self._left.setBufferFrameCount(
-                left_fmt.sampleRate() * self._config.left_buffer_time_ms // 1000
+                left_sample_rate * self._config.left_buffer_time_ms // 1000
             )
             self._right.setBufferFrameCount(
-                right_fmt.sampleRate() * self._config.right_buffer_time_ms // 1000
+                right_sample_rate * self._config.right_buffer_time_ms // 1000
             )
             source.setBufferFrameCount(
                 source.format().sampleRate()
                 * self._config.source_buffer_time_ms
+                // 1000
+            )
+            self._left.setNativePeriodFrameCount(
+                -1
+                if self._config.left_native_period_ms == -1
+                else left_sample_rate * self._config.left_native_period_ms // 1000
+            )
+            self._right.setNativePeriodFrameCount(
+                -1
+                if self._config.right_native_period_ms == -1
+                else right_sample_rate * self._config.right_native_period_ms // 1000
+            )
+            source.setNativePeriodFrameCount(
+                -1
+                if self._config.source_native_period_ms == -1
+                else source.format().sampleRate()
+                * self._config.source_native_period_ms
                 // 1000
             )
             left_io: QIODevice = self._left.start()

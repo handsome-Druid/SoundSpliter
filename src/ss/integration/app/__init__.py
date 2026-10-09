@@ -1,9 +1,9 @@
 from collections.abc import Callable, Collection
 from sys import argv, exit, modules
 from types import TracebackType
-from typing import NoReturn, Protocol
+from typing import NoReturn, Protocol, cast
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from PySide6.QtCore import (
     QCoreApplication,
     QDir,
@@ -23,6 +23,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QCursor, QGuiApplication, QIcon,
 from PySide6.QtMultimedia import QAudioDevice, QMediaDevices
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -39,6 +40,7 @@ from ss.flow import Start
 from .resources import resources_rc
 
 modules["resources_rc"] = resources_rc
+from .ui import Ui_Dialog as UI_Preferences
 from .ui import Ui_MainWindow
 
 
@@ -274,6 +276,55 @@ class APP:
             self._ui.languageComboBox.activated.connect(
                 self._on_language_combo_box_activated
             )
+            self._pref_dialog = QDialog(parent=self._window, modal=True)
+            self._pref_ui: UI_Preferences = UI_Preferences()
+            self._pref_ui.setupUi(Dialog=self._pref_dialog)
+
+            class Prefs(BaseModel):
+                model_config = ConfigDict(from_attributes=True)
+                left_buffer_time_ms: int = Field(
+                    description=self.tr("Left Buffer Time (ms)")
+                )
+                right_buffer_time_ms: int = Field(
+                    description=self.tr("Right Buffer Time (ms)")
+                )
+                source_buffer_time_ms: int = Field(
+                    description=self.tr("Source Buffer Time (ms)")
+                )
+                left_native_period_ms: int = Field(
+                    description=self.tr("Left Native Period (ms)")
+                )
+                right_native_period_ms: int = Field(
+                    description=self.tr("Right Native Period (ms)")
+                )
+                source_native_period_ms: int = Field(
+                    description=self.tr("Source Native Period (ms)")
+                )
+
+            self._prefs: Prefs = Prefs.model_validate(self._config)
+            self._ui.actionPreferences.triggered.connect(
+                self._on_action_preferences_triggered
+            )
+            self._pref_ui.leftBufferSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "left_buffer_time_ms", value)
+            )
+            self._pref_ui.rightBufferSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "right_buffer_time_ms", value)
+            )
+            self._pref_ui.sourceBufferSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "source_buffer_time_ms", value)
+            )
+            self._pref_ui.leftNativePeriodSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "left_native_period_ms", value)
+            )
+            self._pref_ui.rightNativePeriodSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "right_native_period_ms", value)
+            )
+            self._pref_ui.sourceNativePeriodSpinBox.valueChanged.connect(
+                lambda value: setattr(self._prefs, "source_native_period_ms", value)
+            )
+            self._pref_ui.buttonBox.rejected.connect(self._pref_dialog.close)
+            self._pref_ui.buttonBox.accepted.connect(self._on_pref_button_box_accepted)
             self._start.finished.connect(self._on_start_finished)
             self._ui.startPushButton.setEnabled(True)
             self._ui.stopPushButton.setEnabled(False)
@@ -390,6 +441,7 @@ class APP:
         else:
             self._ui.audioOutputComboBox.setEnabled(False)
         self._ui.stopPushButton.setEnabled(False)
+        self._ui.menuSettings.setEnabled(True)
         self._start_action.setEnabled(True)
         self._stop_action.setEnabled(False)
         if exc_type is not None:
@@ -432,6 +484,7 @@ class APP:
         self._ui.stopPushButton.setEnabled(True)
         self._start_action.setEnabled(False)
         self._stop_action.setEnabled(True)
+        self._ui.menuSettings.setEnabled(False)
         self._started = True
 
     @Slot()
@@ -764,3 +817,59 @@ class APP:
                 if translator is not None:
                     self._app.installTranslator(translator)
         self._config.language = self._ui.languageComboBox.currentText()
+
+    @Slot()
+    def _on_action_preferences_triggered(self) -> None:
+        self._pref_ui.leftBufferSpinBox.setValue(self._config.left_buffer_time_ms)
+        self._pref_ui.rightBufferSpinBox.setValue(self._config.right_buffer_time_ms)
+        self._pref_ui.sourceBufferSpinBox.setValue(self._config.source_buffer_time_ms)
+        self._pref_ui.leftNativePeriodSpinBox.setValue(
+            self._config.left_native_period_ms
+        )
+        self._pref_ui.rightNativePeriodSpinBox.setValue(
+            self._config.right_native_period_ms
+        )
+        self._pref_ui.sourceNativePeriodSpinBox.setValue(
+            self._config.source_native_period_ms
+        )
+        self._pref_dialog.open()
+
+    @Slot()
+    def _on_pref_button_box_accepted(self) -> None:
+        try:
+            self._config.left_buffer_time_ms = self._prefs.left_buffer_time_ms
+            self._config.right_buffer_time_ms = self._prefs.right_buffer_time_ms
+            self._config.source_buffer_time_ms = self._prefs.source_buffer_time_ms
+            self._config.left_native_period_ms = self._prefs.left_native_period_ms
+            self._config.right_native_period_ms = self._prefs.right_native_period_ms
+            self._config.source_native_period_ms = self._prefs.source_native_period_ms
+            self._pref_dialog.close()
+        except ValidationError as e:
+            if self._window.isVisible():
+                box = QMessageBox(
+                    QMessageBox.Icon.Critical,
+                    self._app.applicationName(),
+                    ", ".join(
+                        type(self._prefs)
+                        .model_fields[cast(str, error["loc"][0])]
+                        .description
+                        or ""
+                        for error in e.errors()
+                    )
+                    + self.tr(": Invalid Value."),
+                    buttons=QMessageBox.StandardButton.Ok,
+                    parent=self._pref_dialog,
+                )
+                self._message_boxes = getattr(self, "_message_boxes", set())
+                self._message_boxes.add(box)
+                box.finished.connect(
+                    lambda: getattr(self, "_message_boxes", set()).discard(box)
+                )
+                box.finished.connect(
+                    lambda: getattr(self, "_hidden", set()).discard(box)
+                )
+                box.finished.connect(box.deleteLater)
+                box.open()
+            else:
+                self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
+                self._pending_msg.append(str(object=e))

@@ -79,7 +79,7 @@
     <property name="geometry">
      <rect>
       <x>310</x>
-      <y>480</y>
+      <y>460</y>
       <width>181</width>
       <height>111</height>
      </rect>
@@ -125,7 +125,7 @@
       <x>10</x>
       <y>220</y>
       <width>781</width>
-      <height>251</height>
+      <height>231</height>
      </rect>
     </property>
     <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -338,6 +338,28 @@
     </layout>
    </widget>
   </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>Settings(&amp;S)</string>
+    </property>
+    <addaction name="actionPreferences"/>
+   </widget>
+   <addaction name="menuSettings"/>
+  </widget>
+  <action name="actionPreferences">
+   <property name="text">
+    <string>Preferences...</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
