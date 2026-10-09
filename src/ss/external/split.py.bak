@@ -1,3 +1,15 @@
+# from ctypes import (
+#     POINTER,
+#     FormatError,
+#     WinDLL,
+#     byref,
+#     c_bool,
+#     c_int,
+#     c_ulong,
+#     c_void_p,
+#     c_wchar_p,
+#     get_last_error,
+# )
 from fractions import Fraction
 from logging import Logger, getLogger
 from types import TracebackType
@@ -9,17 +21,60 @@ from av.filter.context import FilterContext
 from PySide6.QtCore import (
     QIODevice,
     QMutex,
-    QObject,
     Signal,
     Slot,
 )
-from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QtAudio
+from PySide6.QtMultimedia import QAudioFormat
 
 
-class Split(QObject):
+class Split(QIODevice):
     finished = Signal(object, object, object)
     _logger: Logger = getLogger(name=__name__)
     _mutex = QMutex()
+
+    # class _Thread(QThread):
+    #     @override
+    #     def run(self) -> None:
+    #         avrt = WinDLL(name="avrt", use_last_error=True)
+    #         avrt.AvSetMmThreadCharacteristicsW.restype = c_void_p
+    #         avrt.AvSetMmThreadCharacteristicsW.argtypes = [
+    #             c_wchar_p,
+    #             POINTER(cls=c_ulong),
+    #         ]
+    #         avrt.AvSetMmThreadPriority.restype = c_bool
+    #         avrt.AvSetMmThreadPriority.argtypes = [c_void_p, c_int]
+    #         handle: int | None = avrt.AvSetMmThreadCharacteristicsW(
+    #             "Pro Audio", byref(c_ulong())
+    #         )
+    #         if handle is None:
+    #             error_code: int = get_last_error()
+    #             Split._logger.warning(
+    #                 self.tr(
+    #                     "MMCSS registration failed (Windows error %s: %s); "
+    #                     "the thread will run at normal priority"
+    #                 ),
+    #                 error_code,
+    #                 FormatError(error_code).strip(),
+    #             )
+    #             self._handle = None
+    #         else:
+    #             self._handle = c_void_p(handle)
+    #             if not avrt.AvSetMmThreadPriority(self._handle, 2):
+    #                 error_code: int = get_last_error()
+    #                 Split._logger.warning(
+    #                     self.tr(
+    #                         "Failed to set MMCSS thread priority (Windows error %s: %s)"
+    #                     ),
+    #                     error_code,
+    #                     FormatError(error_code).strip(),
+    #                 )
+    #         try:
+    #             super().run()
+    #         finally:
+    #             if self._handle is not None:
+    #                 avrt.AvRevertMmThreadCharacteristics.restype = c_bool
+    #                 avrt.AvRevertMmThreadCharacteristics.argtypes = [c_void_p]
+    #                 avrt.AvRevertMmThreadCharacteristics(self._handle)
 
     class _Format(NamedTuple):
         rate: int
@@ -57,7 +112,7 @@ class Split(QObject):
         right_io: QIODevice,
         left_fmt: QAudioFormat,
         right_fmt: QAudioFormat,
-        source: QAudioSource,
+        source_fmt: QAudioFormat,
         left_latency: int = 0,
         right_latency: int = 0,
     ) -> None:
@@ -67,21 +122,20 @@ class Split(QObject):
             self.tr("Left channel output"),
             self.tr("Right channel output"),
         ]
-        self._source: QAudioSource = source
-        self._source_fmt: Split._Format = self._handler(source.format())
-        self._left_fmt: Split._Format = self._handler(left_fmt)
-        self._right_fmt: Split._Format = self._handler(right_fmt)
+        self._source: Split._Format = self._handler(source_fmt)
+        self._left: Split._Format = self._handler(left_fmt)
+        self._right: Split._Format = self._handler(right_fmt)
         graph: Graph = Graph()
         self._input: FilterContext = graph.add_abuffer(
-            sample_rate=self._source_fmt.rate,
-            format=self._source_fmt.format.name,
-            layout=self._source_fmt.layout.name,
-            time_base=Fraction(numerator=1, denominator=self._source_fmt.rate),
+            sample_rate=self._source.rate,
+            format=self._source.format.name,
+            layout=self._source.layout.name,
+            time_base=Fraction(numerator=1, denominator=self._source.rate),
         )
         mix: FilterContext = graph.add(
             filter="aformat",
-            sample_rates=str(object=self._source_fmt.rate),
-            sample_fmts=self._source_fmt.format.planar.name,
+            sample_rates=str(object=self._source.rate),
+            sample_fmts=self._source.format.planar.name,
             channel_layouts="stereo",
         )
         splitter: FilterContext = graph.add(
@@ -95,7 +149,7 @@ class Split(QObject):
         )
         for index, (target, latency) in enumerate(
             iterable=zip(
-                (self._left_fmt, self._right_fmt),
+                (self._left, self._right),
                 (left_latency, right_latency),
                 strict=True,
             )
@@ -122,6 +176,7 @@ class Split(QObject):
         graph.configure()
 
     def __enter__(self) -> Self:
+        self._mutex.try_lock()
         return self
 
     @Slot(object, object, object)
@@ -133,13 +188,10 @@ class Split(QObject):
         /,
     ) -> None:
         is_running: bool = not self._mutex.try_lock()
-        self._source.stop()
         try:
             if hasattr(self, "_ios"):
                 self._input.push(frame=None)
-                for index, target in enumerate(
-                    iterable=(self._left_fmt, self._right_fmt)
-                ):
+                for index, target in enumerate(iterable=(self._left, self._right)):
                     while True:
                         try:
                             output: AudioFrame = cast(
@@ -159,41 +211,18 @@ class Split(QObject):
             if is_running:
                 self.finished.emit(exc_type, exc, tb)
 
-    @Slot(object, object, object)
-    def __call__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-        /,
-    ) -> None:
-        if exc_type is not None:
-            self.__exit__(exc_type, exc, tb)
-            return
-        if not self._mutex.try_lock():
-            return
-        if self._source.state() != QtAudio.State.StoppedState:
-            raise RuntimeError(
-                self.tr("Previous shutdown cleanup is incomplete; retrying cleanup")
-            )
-        self._source_io: QIODevice = self._source.start()
-        self._source_io.readyRead.connect(self._on_ready_read)
-
-    @Slot()
-    def _on_ready_read(self) -> None:
+    @override
+    def writeData(self, data: bytes | bytearray | memoryview[int], len: int) -> int:
         try:
-            data: bytes = cast(bytes, self._source_io.readAll())
-            if not data:
-                return
             frame: AudioFrame = AudioFrame(
-                format=self._source_fmt.format,
-                layout=self._source_fmt.layout,
-                samples=len(data) // self._source_fmt.bpf,
+                format=self._source.format,
+                layout=self._source.layout,
+                samples=len // self._source.bpf,
             )
-            frame.sample_rate = self._source_fmt.rate
+            frame.sample_rate = self._source.rate
             memoryview(frame.planes[0])[:] = memoryview(data)
             self._input.push(frame=frame)
-            for index, target in enumerate(iterable=(self._left_fmt, self._right_fmt)):
+            for index, target in enumerate(iterable=(self._left, self._right)):
                 while True:
                     try:
                         output: AudioFrame = cast(AudioFrame, self._sinks[index].pull())
@@ -203,15 +232,20 @@ class Split(QObject):
                         memoryview(output.planes[0])[: output.samples * target.bpf]
                     )
                     written: int = self._ios[index].write(payload)
-                    if written != len(payload):
+                    if written != payload.__len__():
                         self._logger.warning(
                             msg=self._channel_names[index]
                             + self.tr(" audio short write: ")
                             + str(object=written)
                             + " / "
-                            + str(object=len(payload))
+                            + str(object=payload.__len__())
                             + self.tr(" bytes")
                         )
-        except BaseException as e:
+            return len
+        except BaseException as e:  # noqa: BLE001
             self.__exit__(type(e), e, e.__traceback__)
-            raise
+            return -1
+
+    @override
+    def isSequential(self) -> bool:
+        return True
