@@ -27,7 +27,7 @@ from PySide6.QtCore import (
 from PySide6.QtMultimedia import QAudioDevice, QAudioFormat, QAudioSink, QAudioSource
 from shiboken6 import isValid
 
-from ss.external import Config, Split, Volume
+from ss.external import Config, Split, VolumeMonitor
 
 
 class Start(QObject):
@@ -150,7 +150,7 @@ class Start(QObject):
             left_device: QAudioDevice | None = self._config.left_device
             right_device: QAudioDevice | None = self._config.right_device
             source_device: QAudioDevice | None = self._config.source_device
-            volume: QAudioDevice | None = self._config.volume_device
+            volume_device: QAudioDevice | None = self._config.volume_device
             if left_device is None:
                 raise RuntimeError(self.tr("No left channel output selected"))
             if right_device is None:
@@ -219,9 +219,12 @@ class Start(QObject):
                 type=Qt.ConnectionType.DirectConnection,
             )
             self._thread.start()
-            if volume is not None:
-                self._volume = Volume(
-                    left=self._left, right=self._right, volume=volume, parent=self
+            if volume_device is not None:
+                self._volume = VolumeMonitor(
+                    left=self._left,
+                    right=self._right,
+                    volume_device=volume_device,
+                    parent=self,
                 )
                 self._volume_conn: QMetaObject.Connection = (
                     self._volume.finished.connect(self.__exit__)
