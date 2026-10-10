@@ -7,13 +7,17 @@ from av import AudioFormat, AudioFrame, AudioLayout
 from av.filter import Graph
 from av.filter.context import FilterContext
 from PySide6.QtCore import (
+    QCoreApplication,
+    QEvent,
     QIODevice,
     QMutex,
     QObject,
+    QThread,
     Signal,
     Slot,
 )
 from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QtAudio
+from shiboken6 import isValid
 
 
 class Split(QObject):
@@ -63,11 +67,8 @@ class Split(QObject):
     ) -> None:
         super().__init__()
         self._ios: list[QIODevice] = [left_io, right_io]
-        self._channel_names: list[str] = [
-            self.tr("Left channel output"),
-            self.tr("Right channel output"),
-        ]
         self._source: QAudioSource = source
+        self._source.stateChanged.connect(self._on_state_changed)
         self._source_fmt: Split._Format = self._handler(source.format())
         self._left_fmt: Split._Format = self._handler(left_fmt)
         self._right_fmt: Split._Format = self._handler(right_fmt)
@@ -133,9 +134,17 @@ class Split(QObject):
         /,
     ) -> None:
         is_running: bool = not self._mutex.try_lock()
-        self._source.stop()
+        if isValid(self._source):
+            self._source.stop()
+            self._source.deleteLater()
+            QCoreApplication.sendPostedEvents(
+                receiver=self._source,
+                event_type=QEvent.Type.DeferredDelete,
+            )
         try:
             if hasattr(self, "_ios"):
+                ios: list[QIODevice] = self._ios
+                del self._ios
                 self._input.push(frame=None)
                 for index, target in enumerate(
                     iterable=(self._left_fmt, self._right_fmt)
@@ -147,7 +156,7 @@ class Split(QObject):
                             )
                         except EOFError:
                             break
-                        self._ios[index].write(
+                        ios[index].write(
                             bytes(
                                 memoryview(output.planes[0])[
                                     : output.samples * target.bpf
@@ -158,6 +167,8 @@ class Split(QObject):
             self._mutex.unlock()
             if is_running:
                 self.finished.emit(exc_type, exc, tb)
+            if not QThread.isMainThread():
+                self.thread().quit()
 
     @Slot(object, object, object)
     def __call__(
@@ -205,7 +216,11 @@ class Split(QObject):
                     written: int = self._ios[index].write(payload)
                     if written != len(payload):
                         self._logger.warning(
-                            msg=self._channel_names[index]
+                            msg=(
+                                self.tr("Left channel output")
+                                if index == 0
+                                else self.tr("Right channel output")
+                            )
                             + self.tr(" audio short write: ")
                             + str(object=written)
                             + " / "
@@ -215,3 +230,12 @@ class Split(QObject):
         except BaseException as e:
             self.__exit__(type(e), e, e.__traceback__)
             raise
+
+    @Slot()
+    def _on_state_changed(self) -> None:
+        if self._source.state() == QtAudio.State.IdleState:
+            self._logger.warning(
+                msg=self.tr(
+                    "The input source buffer is full; audio data has been discarded"
+                )
+            )

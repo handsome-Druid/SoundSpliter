@@ -1,5 +1,6 @@
 from ctypes import COMError
-from typing import Protocol, cast, override
+from types import TracebackType
+from typing import Protocol, Self, cast, override
 
 from pycaw.constants import DEVICE_STATE, EDataFlow
 from pycaw.pycaw import AudioUtilities
@@ -21,13 +22,14 @@ class VolumeController(VolumeObject):
     class _Device(Protocol):
         id: str
         FriendlyName: str
-        mute: bool
         volume_percent: float = 100.0
         EndpointVolume: VolumeController._EndpointVolume
 
     class _EndpointVolume(Protocol):
         def UnregisterControlChangeNotify(self, callback: VolumeCallback, /): ...
         def RegisterControlChangeNotify(self, callback: VolumeCallback, /): ...
+        def GetMute(self, /) -> int: ...
+        def SetMute(self, mute: int, event_context: object, /): ...
 
     @property
     def device(self) -> str | None:
@@ -62,12 +64,14 @@ class VolumeController(VolumeObject):
         )
         if self._device is None:
             return
+        self._endpoint_volume = self._device.EndpointVolume
         self.notify.emit(
             False
-            if cast(VolumeController._Device, self._device).mute
-            else cast(VolumeController._Device, self._device).volume_percent
+            if cast(VolumeController._EndpointVolume, self._endpoint_volume).GetMute()
+            == 1
+            else cast(VolumeController._Device, self._device).volume_percent / 100.0
         )
-        self._endpoint_volume = self._device.EndpointVolume
+        self._callback = VolumeCallback(self)
         cast(
             VolumeController._EndpointVolume, self._endpoint_volume
         ).RegisterControlChangeNotify(self._callback)
@@ -89,7 +93,7 @@ class VolumeController(VolumeObject):
     @property
     def mute(self) -> bool:
         return (
-            cast(VolumeController._Device, self._device).mute
+            cast(VolumeController._EndpointVolume, self._endpoint_volume).GetMute() == 1
             if self._detect()
             else False
         )
@@ -97,7 +101,9 @@ class VolumeController(VolumeObject):
     @mute.setter
     def mute(self, value: bool) -> None:
         if self._detect():
-            cast(VolumeController._Device, self._device).mute = value
+            cast(VolumeController._EndpointVolume, self._endpoint_volume).SetMute(
+                value, None
+            )
 
     def _detect(self) -> bool:
         if self._device is None:
@@ -107,19 +113,41 @@ class VolumeController(VolumeObject):
                 AudioUtilities.GetDeviceEnumerator()
                 .GetDevice(self._device.id)  # pyright: ignore[reportAttributeAccessIssue]
                 .GetState()
-                == DEVICE_STATE.ACTIVE
+                == DEVICE_STATE.ACTIVE.value
             ):
                 return True
             else:
+                if hasattr(self, "_callback"):
+                    try:
+                        cast(
+                            VolumeController._EndpointVolume, self._endpoint_volume
+                        ).UnregisterControlChangeNotify(self._callback)
+                    except COMError:
+                        pass
+                self._device = self._endpoint_volume = None
+                return False
+        except COMError:
+            if hasattr(self, "_callback"):
                 try:
                     cast(
                         VolumeController._EndpointVolume, self._endpoint_volume
                     ).UnregisterControlChangeNotify(self._callback)
                 except COMError:
                     pass
-                self._device = self._endpoint_volume = None
-                return False
-        except COMError:
+            self._device = self._endpoint_volume = None
+            return False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+        /,
+    ) -> None:
+        if self._detect() and hasattr(self, "_callback"):
             try:
                 cast(
                     VolumeController._EndpointVolume, self._endpoint_volume
@@ -127,4 +155,3 @@ class VolumeController(VolumeObject):
             except COMError:
                 pass
             self._device = self._endpoint_volume = None
-            return False

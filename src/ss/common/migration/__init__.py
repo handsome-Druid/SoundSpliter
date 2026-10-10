@@ -26,6 +26,7 @@ class Migration:
             left=v1.left,
             right=v1.right,
             source=v1.source,
+            volume=v1.volume,
             left_latency_ms=v1.left_latency,
             right_latency_ms=v1.right_latency,
         )

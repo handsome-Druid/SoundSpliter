@@ -12,7 +12,6 @@ class VolumeObject(QObject):
         self, /, parent: QObject | None = None, *, objectName: str | None = None
     ) -> None:
         super().__init__(parent, objectName=objectName)
-        self._callback = VolumeCallback(self)
 
 
 class VolumeCallback(AudioEndpointVolumeCallback):

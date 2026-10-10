@@ -1,9 +1,10 @@
 from collections.abc import Callable, Collection
 from sys import argv, exit, modules
 from types import TracebackType
-from typing import NoReturn, Protocol, cast
+from typing import ClassVar, Literal, NoReturn, Protocol, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+import pydantic._internal._validators  # noqa: F401
+from pydantic import BaseModel, ConfigDict, ValidationError
 from PySide6.QtCore import (
     QCoreApplication,
     QDir,
@@ -14,6 +15,8 @@ from PySide6.QtCore import (
     QPoint,
     QRect,
     QSettings,
+    QSignalBlocker,
+    QSize,
     Qt,
     QTimer,
     QTranslator,
@@ -35,7 +38,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from ss.external import Config
-from ss.flow import Start
+from ss.flow import Start, Volume
 
 from .resources import resources_rc
 
@@ -48,6 +51,14 @@ class APP:
     tr: classmethod[APP, [str], str] = classmethod(
         lambda cls, key: QCoreApplication.translate(cls.__name__, key)
     )
+    _PREF_LABELS: ClassVar[dict[str, Callable[[], str]]] = {
+        "left_buffer_time_ms": lambda: APP.tr("Left Buffer Time (ms)"),
+        "right_buffer_time_ms": lambda: APP.tr("Right Buffer Time (ms)"),
+        "source_buffer_time_ms": lambda: APP.tr("Source Buffer Time (ms)"),
+        "left_native_period": lambda: APP.tr("Left Native Period (frames)"),
+        "right_native_period": lambda: APP.tr("Right Native Period (frames)"),
+        "source_native_period": lambda: APP.tr("Source Native Period (frames)"),
+    }
 
     class _DI(Protocol):
         def get[T](self, _: type[T], /) -> T: ...
@@ -79,6 +90,10 @@ class APP:
             self._app.setApplicationName(self._window.windowTitle())
             self._config: Config = self._di.get(Config)
             self._start: Start = self._di.get(Start)
+            self._volume = Volume(parent=self._window)
+            self._app.aboutToQuit.connect(
+                lambda: self._volume.__exit__(None, None, None)
+            )
             self._lock = QLockFile(self._config.dir_.filePath(".lock"))
             self._lock.setStaleLockTime(0)
             if not self._lock.tryLock(0):
@@ -140,6 +155,8 @@ class APP:
                         event.accept()
                     case QEvent.Type.LanguageChange:
                         self._ui.retranslateUi(MainWindow=self._window)
+                        if hasattr(self, "_pref_ui"):
+                            self._pref_ui.retranslateUi(Dialog=self._pref_dialog)
                         self._start_action.setText(self._ui.startPushButton.text())
                         self._stop_action.setText(self._ui.stopPushButton.text())
                         self._quit_action.setText(self.tr("Exit"))
@@ -282,24 +299,16 @@ class APP:
 
             class Prefs(BaseModel):
                 model_config = ConfigDict(from_attributes=True)
-                left_buffer_time_ms: int = Field(
-                    description=self.tr("Left Buffer Time (ms)")
-                )
-                right_buffer_time_ms: int = Field(
-                    description=self.tr("Right Buffer Time (ms)")
-                )
-                source_buffer_time_ms: int = Field(
-                    description=self.tr("Source Buffer Time (ms)")
-                )
-                left_native_period_ms: int = Field(
-                    description=self.tr("Left Native Period (ms)")
-                )
-                right_native_period_ms: int = Field(
-                    description=self.tr("Right Native Period (ms)")
-                )
-                source_native_period_ms: int = Field(
-                    description=self.tr("Source Native Period (ms)")
-                )
+                left_buffer_time_ms: int
+                right_buffer_time_ms: int
+                source_buffer_time_ms: int
+                left_native_period: Literal[-1, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+                right_native_period: Literal[
+                    -1, 32, 64, 128, 256, 512, 1024, 2048, 4096
+                ]
+                source_native_period: Literal[
+                    -1, 32, 64, 128, 256, 512, 1024, 2048, 4096
+                ]
 
             self._prefs: Prefs = Prefs.model_validate(self._config)
             self._ui.actionPreferences.triggered.connect(
@@ -314,17 +323,88 @@ class APP:
             self._pref_ui.sourceBufferSpinBox.valueChanged.connect(
                 lambda value: setattr(self._prefs, "source_buffer_time_ms", value)
             )
-            self._pref_ui.leftNativePeriodSpinBox.valueChanged.connect(
-                lambda value: setattr(self._prefs, "left_native_period_ms", value)
+            self._pref_ui.leftComboBox.addItems(
+                ("-1", "32", "64", "128", "256", "512", "1024", "2048", "4096")
             )
-            self._pref_ui.rightNativePeriodSpinBox.valueChanged.connect(
-                lambda value: setattr(self._prefs, "right_native_period_ms", value)
+            self._pref_ui.rightComboBox.addItems(
+                ("-1", "32", "64", "128", "256", "512", "1024", "2048", "4096")
             )
-            self._pref_ui.sourceNativePeriodSpinBox.valueChanged.connect(
-                lambda value: setattr(self._prefs, "source_native_period_ms", value)
+            self._pref_ui.sourceComboBox.addItems(
+                ("-1", "32", "64", "128", "256", "512", "1024", "2048", "4096")
+            )
+            self._pref_ui.leftComboBox.currentTextChanged.connect(
+                lambda value: setattr(self._prefs, "left_native_period", int(value))
+            )
+            self._pref_ui.rightComboBox.currentTextChanged.connect(
+                lambda value: setattr(self._prefs, "right_native_period", int(value))
+            )
+            self._pref_ui.sourceComboBox.currentTextChanged.connect(
+                lambda value: setattr(self._prefs, "source_native_period", int(value))
             )
             self._pref_ui.buttonBox.rejected.connect(self._pref_dialog.close)
             self._pref_ui.buttonBox.accepted.connect(self._on_pref_button_box_accepted)
+            self._ui.leftToolButton.setIconSize(QSize(20, 16))
+            self._ui.rightToolButton.setIconSize(QSize(20, 16))
+            self._ui.leftHorizontalSlider.valueChanged.connect(
+                lambda value: setattr(self._volume, "left_volume_percent", value)
+            )
+            self._ui.rightHorizontalSlider.valueChanged.connect(
+                lambda value: setattr(self._volume, "right_volume_percent", value)
+            )
+            self._ui.leftHorizontalSlider.valueChanged.connect(
+                lambda value: self._ui.leftToolButton.setIcon(
+                    self._volume_0
+                    if value < 1
+                    else self._volume_1
+                    if value < 33
+                    else self._volume_2
+                    if value < 66
+                    else self._volume_3
+                )
+            )
+            self._ui.rightHorizontalSlider.valueChanged.connect(
+                lambda value: self._ui.rightToolButton.setIcon(
+                    self._volume_0
+                    if value < 1
+                    else self._volume_1
+                    if value < 33
+                    else self._volume_2
+                    if value < 66
+                    else self._volume_3
+                )
+            )
+            self._ui.leftHorizontalSlider.valueChanged.connect(
+                lambda value: self._ui.leftVolumeLabel.setText(f"{value}%")
+            )
+            self._ui.rightHorizontalSlider.valueChanged.connect(
+                lambda value: self._ui.rightVolumeLabel.setText(f"{value}%")
+            )
+            self._ui.leftHorizontalSlider.valueChanged.connect(
+                self._ui.leftToolButton.setChecked
+            )
+            self._ui.rightHorizontalSlider.valueChanged.connect(
+                self._ui.rightToolButton.setChecked
+            )
+            self._ui.leftHorizontalSlider.sliderReleased.connect(
+                lambda: (
+                    self._ui.leftHorizontalSlider.setValue(
+                        round(number=self._volume.left_volume_percent)
+                    ),
+                    self._ui.leftToolButton.setChecked(not self._volume.left_mute),
+                )
+            )
+            self._ui.rightHorizontalSlider.sliderReleased.connect(
+                lambda: (
+                    self._ui.rightHorizontalSlider.setValue(
+                        round(number=self._volume.right_volume_percent)
+                    ),
+                    self._ui.rightToolButton.setChecked(not self._volume.right_mute),
+                )
+            )
+            self._ui.leftToolButton.toggled.connect(self._on_left_tool_button_toggled)
+            self._ui.rightToolButton.toggled.connect(self._on_right_tool_button_toggled)
+            self._volume.left_notify.connect(self._on_volume_left_notify)
+            self._volume.right_notify.connect(self._on_volume_right_notify)
             self._start.finished.connect(self._on_start_finished)
             self._ui.startPushButton.setEnabled(True)
             self._ui.stopPushButton.setEnabled(False)
@@ -393,19 +473,17 @@ class APP:
                         )
                         self._ui.sourceLabel.setStyleSheet("color: rgb(40, 167, 69)")
                         self._config.source_device = device
-                        if not self._ui.audioCheckBox.isChecked():
-                            for device in self._mediadevices.audioOutputs():
-                                description: str = device.description()
-                                if "CABLE Input" in device.description():
-                                    self._ui.audioCheckBox.setChecked(True)
-                                    self._ui.audioOutputComboBox.addItem(
-                                        description, userData=device
-                                    )
-                                    self._ui.audioOutputComboBox.setCurrentIndex(
-                                        self._ui.audioOutputComboBox.count() - 1
-                                    )
-                                    self._config.volume_device = device
-                                    break
+                        break
+            if (
+                self._config.source is not None
+                and not self._ui.audioCheckBox.isChecked()
+                and "CABLE Output" in self._config.source
+            ):
+                for device in self._mediadevices.audioOutputs():
+                    description: str = device.description()
+                    if "CABLE Input" in device.description():
+                        self._ui.audioCheckBox.setChecked(True)
+                        self._config.volume_device = device
                         break
             self._ui.refreshPushButton.click()
             self._mediadevices.audioInputsChanged.connect(self._on_audio_device_changed)
@@ -538,8 +616,9 @@ class APP:
     ) -> None:
         if current is None:
             return
+        device: QAudioDevice = current.data(Qt.ItemDataRole.UserRole)
         try:
-            self._config.left_device = current.data(Qt.ItemDataRole.UserRole)
+            self._config.left_device = device
         except ValidationError as e:
             if self._window.isVisible():
                 box = QMessageBox(
@@ -570,6 +649,11 @@ class APP:
                     else self._ui.leftListWidget.setCurrentItem(previous)
                 ),
             )
+        self._volume.left = device.description()
+        self._ui.leftHorizontalSlider.setValue(
+            round(number=self._volume.left_volume_percent)
+        )
+        self._ui.leftToolButton.setChecked(not self._volume.left_mute)
 
     @Slot(QListWidgetItem, QListWidgetItem)
     def on_right_list_widget_current_item_changed(
@@ -579,8 +663,9 @@ class APP:
     ) -> None:
         if current is None:
             return
+        device: QAudioDevice = current.data(Qt.ItemDataRole.UserRole)
         try:
-            self._config.right_device = current.data(Qt.ItemDataRole.UserRole)
+            self._config.right_device = device
         except ValidationError as e:
             if self._window.isVisible():
                 box = QMessageBox(
@@ -611,6 +696,11 @@ class APP:
                     else self._ui.rightListWidget.setCurrentItem(previous)
                 ),
             )
+        self._volume.right = device.description()
+        self._ui.rightHorizontalSlider.setValue(
+            round(number=self._volume.right_volume_percent)
+        )
+        self._ui.rightToolButton.setChecked(not self._volume.right_mute)
 
     @Slot(Qt.CheckState)
     def _on_check_box_check_state_changed(self, state: Qt.CheckState) -> None:
@@ -823,14 +913,12 @@ class APP:
         self._pref_ui.leftBufferSpinBox.setValue(self._config.left_buffer_time_ms)
         self._pref_ui.rightBufferSpinBox.setValue(self._config.right_buffer_time_ms)
         self._pref_ui.sourceBufferSpinBox.setValue(self._config.source_buffer_time_ms)
-        self._pref_ui.leftNativePeriodSpinBox.setValue(
-            self._config.left_native_period_ms
+        self._pref_ui.leftComboBox.setCurrentText(str(self._config.left_native_period))
+        self._pref_ui.rightComboBox.setCurrentText(
+            str(self._config.right_native_period)
         )
-        self._pref_ui.rightNativePeriodSpinBox.setValue(
-            self._config.right_native_period_ms
-        )
-        self._pref_ui.sourceNativePeriodSpinBox.setValue(
-            self._config.source_native_period_ms
+        self._pref_ui.sourceComboBox.setCurrentText(
+            str(self._config.source_native_period)
         )
         self._pref_dialog.open()
 
@@ -840,9 +928,9 @@ class APP:
             self._config.left_buffer_time_ms = self._prefs.left_buffer_time_ms
             self._config.right_buffer_time_ms = self._prefs.right_buffer_time_ms
             self._config.source_buffer_time_ms = self._prefs.source_buffer_time_ms
-            self._config.left_native_period_ms = self._prefs.left_native_period_ms
-            self._config.right_native_period_ms = self._prefs.right_native_period_ms
-            self._config.source_native_period_ms = self._prefs.source_native_period_ms
+            self._config.left_native_period = self._prefs.left_native_period
+            self._config.right_native_period = self._prefs.right_native_period
+            self._config.source_native_period = self._prefs.source_native_period
             self._pref_dialog.close()
         except ValidationError as e:
             if self._window.isVisible():
@@ -850,10 +938,7 @@ class APP:
                     QMessageBox.Icon.Critical,
                     self._app.applicationName(),
                     ", ".join(
-                        type(self._prefs)
-                        .model_fields[cast(str, error["loc"][0])]
-                        .description
-                        or ""
+                        self._PREF_LABELS[cast(str, error["loc"][0])]()
                         for error in e.errors()
                     )
                     + self.tr(": Invalid Value."),
@@ -873,3 +958,100 @@ class APP:
             else:
                 self._pending_msg: list[str] = getattr(self, "_pending_msg", [])
                 self._pending_msg.append(str(object=e))
+
+    _volume_1 = QIcon()
+    _volume_1.addFile(
+        ":/image/volume-1.svg", mode=QIcon.Mode.Normal, state=QIcon.State.On
+    )
+    _volume_1.addFile(
+        ":/image/volume-x.svg", mode=QIcon.Mode.Normal, state=QIcon.State.Off
+    )
+    _volume_2 = QIcon()
+    _volume_2.addFile(
+        ":/image/volume-2.svg", mode=QIcon.Mode.Normal, state=QIcon.State.On
+    )
+    _volume_2.addFile(
+        ":/image/volume-x.svg", mode=QIcon.Mode.Normal, state=QIcon.State.Off
+    )
+    _volume_3 = QIcon()
+    _volume_3.addFile(
+        ":/image/volume-3.svg", mode=QIcon.Mode.Normal, state=QIcon.State.On
+    )
+    _volume_3.addFile(
+        ":/image/volume-x.svg", mode=QIcon.Mode.Normal, state=QIcon.State.Off
+    )
+    _volume_0 = QIcon()
+    _volume_0.addFile(
+        ":/image/volume.svg", mode=QIcon.Mode.Normal, state=QIcon.State.On
+    )
+    _volume_0.addFile(
+        ":/image/volume-x.svg", mode=QIcon.Mode.Normal, state=QIcon.State.Off
+    )
+
+    @Slot(object)
+    def _on_volume_left_notify(self, value: float | bool) -> None:
+        if self._ui.leftHorizontalSlider.isSliderDown():
+            return
+        if isinstance(value, bool):
+            self._ui.leftToolButton.setChecked(value)
+        else:
+            volume_percent: float = round(number=value * 100.0)
+            self._ui.leftVolumeLabel.setText(f"{volume_percent}%")
+            with QSignalBlocker(self._ui.leftHorizontalSlider):
+                self._ui.leftHorizontalSlider.setValue(volume_percent)
+            if volume_percent < 1:
+                self._ui.leftToolButton.setIcon(self._volume_0)
+            elif volume_percent < 33:
+                self._ui.leftToolButton.setIcon(self._volume_1)
+            elif volume_percent < 66:
+                self._ui.leftToolButton.setIcon(self._volume_2)
+            else:
+                self._ui.leftToolButton.setIcon(self._volume_3)
+            QTimer.singleShot(0, lambda: self._ui.leftToolButton.setChecked(True))
+
+    @Slot(object)
+    def _on_volume_right_notify(self, value: float | bool) -> None:
+        if self._ui.rightHorizontalSlider.isSliderDown():
+            return
+        if isinstance(value, bool):
+            self._ui.rightToolButton.setChecked(value)
+        else:
+            volume_percent: float = round(number=value * 100.0)
+            self._ui.rightVolumeLabel.setText(f"{volume_percent}%")
+            with QSignalBlocker(self._ui.rightHorizontalSlider):
+                self._ui.rightHorizontalSlider.setValue(volume_percent)
+            if volume_percent < 1:
+                self._ui.rightToolButton.setIcon(self._volume_0)
+            elif volume_percent < 33:
+                self._ui.rightToolButton.setIcon(self._volume_1)
+            elif volume_percent < 66:
+                self._ui.rightToolButton.setIcon(self._volume_2)
+            else:
+                self._ui.rightToolButton.setIcon(self._volume_3)
+            QTimer.singleShot(0, lambda: self._ui.rightToolButton.setChecked(True))
+
+    @Slot(bool)
+    def _on_left_tool_button_toggled(self, checked: bool) -> None:
+        volume_percent: float = round(number=self._volume.left_volume_percent)
+        if volume_percent < 1:
+            self._ui.leftToolButton.setIcon(self._volume_0)
+        elif volume_percent < 33:
+            self._ui.leftToolButton.setIcon(self._volume_1)
+        elif volume_percent < 66:
+            self._ui.leftToolButton.setIcon(self._volume_2)
+        else:
+            self._ui.leftToolButton.setIcon(self._volume_3)
+        self._volume.left_mute = not checked
+
+    @Slot(bool)
+    def _on_right_tool_button_toggled(self, checked: bool) -> None:
+        volume_percent: float = round(number=self._volume.right_volume_percent)
+        if volume_percent < 1:
+            self._ui.rightToolButton.setIcon(self._volume_0)
+        elif volume_percent < 33:
+            self._ui.rightToolButton.setIcon(self._volume_1)
+        elif volume_percent < 66:
+            self._ui.rightToolButton.setIcon(self._volume_2)
+        else:
+            self._ui.rightToolButton.setIcon(self._volume_3)
+        self._volume.right_mute = not checked

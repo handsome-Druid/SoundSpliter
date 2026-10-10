@@ -6,7 +6,7 @@ from pycaw.utils import AudioDevice, AudioUtilities
 from PySide6.QtCore import QMutex, QObject, Qt, Signal, Slot
 from PySide6.QtMultimedia import QAudioDevice, QAudioSink
 
-from ss.common.volume import VolumeObject
+from ss.common.volume import VolumeCallback, VolumeObject
 
 
 class VolumeMonitor(VolumeObject):
@@ -64,6 +64,7 @@ class VolumeMonitor(VolumeObject):
             if not self._mutex.try_lock():
                 return
             try:
+                self._callback = VolumeCallback(self)
                 self._device.EndpointVolume.RegisterControlChangeNotify(self._callback)
             except BaseException:
                 self._mutex.unlock()
@@ -92,7 +93,7 @@ class VolumeMonitor(VolumeObject):
     ) -> None:
         is_running: bool = not self._mutex.try_lock()
         try:
-            if is_running:
+            if is_running and hasattr(self, "_callback"):
                 self._device.EndpointVolume.UnregisterControlChangeNotify(
                     self._callback
                 )

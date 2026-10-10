@@ -1,4 +1,5 @@
-from typing import override
+from types import TracebackType
+from typing import Self, override
 
 from PySide6.QtCore import QObject, Signal
 
@@ -6,8 +7,8 @@ from ss.external.volume_controller import VolumeController
 
 
 class Volume(QObject):
-    left_notify = Signal(float)
-    right_notify = Signal(float)
+    left_notify = Signal(object)
+    right_notify = Signal(object)
 
     @override
     def __init__(
@@ -66,3 +67,18 @@ class Volume(QObject):
     @right_mute.setter
     def right_mute(self, value: bool) -> None:
         self._right_controller.mute = value
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+        /,
+    ) -> None:
+        try:
+            self._left_controller.__exit__(exc_type, exc, tb)
+        finally:
+            self._right_controller.__exit__(exc_type, exc, tb)
