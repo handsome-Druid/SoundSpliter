@@ -1,7 +1,7 @@
 from ctypes import COMError
 from typing import Protocol, cast, override
 
-from pycaw.constants import DEVICE_STATE
+from pycaw.constants import DEVICE_STATE, EDataFlow
 from pycaw.pycaw import AudioUtilities
 from PySide6.QtCore import QObject
 
@@ -52,7 +52,10 @@ class VolumeController(VolumeObject):
         self._device = next(
             (
                 device
-                for device in AudioUtilities.GetAllDevices()
+                for device in AudioUtilities.GetAllDevices(
+                    data_flow=EDataFlow.eRender.value,
+                    device_state=DEVICE_STATE.ACTIVE.value,
+                )
                 if device.FriendlyName == value
             ),
             None,

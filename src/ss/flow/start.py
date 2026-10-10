@@ -113,13 +113,13 @@ class Start(QObject):
                         msg=self.tr("Failed to clean up the audio thread")
                     )
                     self._thread = self._Thread(parent=self)
-                    if hasattr(self, "_volume") and isValid(self._volume):
-                        try:
-                            if hasattr(self, "_volume_conn"):
-                                self._volume.finished.disconnect(self._volume_conn)
-                            self._volume.__exit__(exc_type, exc, tb)
-                        finally:
-                            self._volume.deleteLater()
+                if hasattr(self, "_volume") and isValid(self._volume):
+                    try:
+                        if hasattr(self, "_volume_conn"):
+                            self._volume.finished.disconnect(self._volume_conn)
+                        self._volume.__exit__(exc_type, exc, tb)
+                    finally:
+                        self._volume.deleteLater()
         finally:
             if hasattr(self, "_left") and isValid(self._left):
                 self._left.stop()
